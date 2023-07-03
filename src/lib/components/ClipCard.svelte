@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { convertFileSrc } from "@tauri-apps/api/core";
   import type { ClipItem } from "$lib/api/tauri";
   import { copyToClipboard, deleteClip, pinClip, unpinClip } from "$lib/api/tauri";
   import { relativeTime } from "$lib/utils/time";
@@ -15,7 +16,12 @@
   let isHovered = $state(false);
   let isFlashing = $derived(clipsStore.flashingId === clip.id);
 
-  async function handleCopy(e: MouseEvent) {
+  // For image clips, convert the stored file path to a WebView-accessible URL
+  let imageSrc = $derived(
+    clip.contentType === "image" ? convertFileSrc(clip.content) : ""
+  );
+
+async function handleCopy(e: MouseEvent) {
     e.stopPropagation();
     try {
       await copyToClipboard(clip.id);
@@ -56,10 +62,12 @@
     email: "📧",
     color: "🎨",
     code: "</>",
+    image: "🖼",
     text: "",
   };
 
   const animDelay = `${Math.min(index * 30, 300)}ms`;
+
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -84,28 +92,44 @@
     <div class="absolute top-2 right-2 text-xs opacity-60">📌</div>
   {/if}
 
-  <!-- Content type icon -->
-  {#if typeIcon[clip.contentType]}
+  <!-- Content type icon (not shown for image since the thumbnail replaces it) -->
+  {#if typeIcon[clip.contentType] && clip.contentType !== "image"}
     <span class="text-xs opacity-40 mb-1 block font-mono">
       {typeIcon[clip.contentType]}
     </span>
   {/if}
 
-  <!-- Content preview -->
-  <p
-    class="text-sm leading-relaxed line-clamp-4 selectable
-           {clip.contentType === 'code' ? 'font-mono text-xs text-green-300/80' : 'text-white/85'}
-           {clip.contentType === 'url' ? 'text-blue-300/80 underline-offset-2' : ''}"
-  >
-    {clip.preview || clip.content}
-  </p>
+  <!-- Image thumbnail -->
+  {#if clip.contentType === "image"}
+    <div class="w-full rounded-lg overflow-hidden mb-2 bg-white/5">
+      <img
+        src={imageSrc}
+        alt=""
+        class="w-full object-contain max-h-40"
+        loading="lazy"
+      />
+    </div>
+    <p class="text-xs text-white/40">{clip.preview}</p>
 
-  <!-- Color swatch for color type -->
-  {#if clip.contentType === "color"}
+  <!-- Color swatch -->
+  {:else if clip.contentType === "color"}
+    <p class="text-sm leading-relaxed line-clamp-4 selectable text-white/85">
+      {clip.preview || clip.content}
+    </p>
     <div
       class="w-full h-6 rounded mt-2 border border-white/10"
       style="background-color: {clip.content};"
     ></div>
+
+  <!-- Text / URL / code / email -->
+  {:else}
+    <p
+      class="text-sm leading-relaxed line-clamp-4 selectable
+             {clip.contentType === 'code' ? 'font-mono text-xs text-green-300/80' : 'text-white/85'}
+             {clip.contentType === 'url' ? 'text-blue-300/80 underline-offset-2' : ''}"
+    >
+      {clip.preview || clip.content}
+    </p>
   {/if}
 
   <!-- Footer -->

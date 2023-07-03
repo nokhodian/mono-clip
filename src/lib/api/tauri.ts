@@ -14,7 +14,7 @@ export interface Folder {
 export interface ClipItem {
   id: number;
   content: string;
-  contentType: "text" | "url" | "email" | "color" | "code";
+  contentType: "text" | "url" | "email" | "color" | "code" | "image";
   preview: string;
   folderId: number;
   isPinned: boolean;

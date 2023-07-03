@@ -71,14 +71,26 @@ pub async fn copy_to_clipboard(
     state: State<'_, AppState>,
     id: i64,
 ) -> Result<(), String> {
-    let (content, paste_on_click) = {
+    let (content, content_type, paste_on_click) = {
         let conn = state.db.lock();
         let clip = queries::get_clip(&conn, id).map_err(|e| e.to_string())?;
         let settings = queries::get_settings(&conn).map_err(|e| e.to_string())?;
-        (clip.content, settings.paste_on_click)
+        (clip.content, clip.content_type, settings.paste_on_click)
     };
 
-    app.clipboard().write_text(content).map_err(|e| e.to_string())?;
+    match content_type.as_str() {
+        "image" => {
+            // Read the saved PNG back and write RGBA image to clipboard
+            copy_image_to_clipboard(&app, &content).map_err(|e| e.to_string())?;
+        }
+        "file" => {
+            // Write file paths as plain text; best-effort for now
+            app.clipboard().write_text(content).map_err(|e| e.to_string())?;
+        }
+        _ => {
+            app.clipboard().write_text(content).map_err(|e| e.to_string())?;
+        }
+    }
 
     if paste_on_click {
         // Simulate Cmd+V after a short delay to allow clipboard to settle
@@ -93,6 +105,15 @@ pub async fn copy_to_clipboard(
         });
     }
 
+    Ok(())
+}
+
+fn copy_image_to_clipboard(app: &AppHandle, path: &str) -> anyhow::Result<()> {
+    use tauri::image::Image;
+    let img = image::open(path)?.to_rgba8();
+    let (w, h) = img.dimensions();
+    let tauri_img = Image::new_owned(img.into_raw(), w, h);
+    app.clipboard().write_image(&tauri_img).map_err(|e| anyhow::anyhow!("{}", e))?;
     Ok(())
 }
 
