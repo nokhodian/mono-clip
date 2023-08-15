@@ -7,6 +7,8 @@ build/
 
 # Tauri build artifacts
 src-tauri/target/
+# Pre-built CLI sidecars (generated; rebuild with: cargo build --bin mclip)
+src-tauri/binaries/
 
 # Environment
 .env

@@ -105,3 +105,4 @@ export const runAutoCleanup = () => invoke<number>("run_auto_cleanup");
 export const showMainWindow = () => invoke<void>("show_main_window");
 export const hideMainWindow = () => invoke<void>("hide_main_window");
 export const toggleMainWindow = () => invoke<void>("toggle_main_window");
+export const installCli = () => invoke<string>("install_cli");
