@@ -5,6 +5,7 @@ description = "A blazing-fast macOS clipboard manager"
 authors = ["MonoES"]
 edition = "2021"
 rust-version = "1.77.2"
+default-run = "monoclip"
 
 [lib]
 name = "monoclip_lib"
