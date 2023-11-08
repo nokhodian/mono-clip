@@ -9,10 +9,12 @@
   import Sidebar from "$lib/components/Sidebar.svelte";
   import ClipGrid from "$lib/components/ClipGrid.svelte";
   import SettingsPanel from "$lib/components/SettingsPanel.svelte";
+  import HelpPanel from "$lib/components/HelpPanel.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import { hideMainWindow } from "$lib/api/tauri";
 
   let showSettings = $state(false);
+  let showHelp = $state(false);
   let searchQuery = $state("");
   let toast: ReturnType<typeof Toast> | null = $state(null);
   let searchDebounce: ReturnType<typeof setTimeout>;
@@ -72,7 +74,7 @@
       if (focused) {
         // Reload to surface any clips captured while the window was hidden
         clipsStore.load(foldersStore.activeId ?? 1);
-      } else if (!showSettings) {
+      } else if (!showSettings && !showHelp) {
         // Small delay to allow click actions to complete
         setTimeout(() => hideMainWindow(), 200);
       }
@@ -85,7 +87,9 @@
 
   function handleGlobalKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") {
-      if (showSettings) {
+      if (showHelp) {
+        showHelp = false;
+      } else if (showSettings) {
         showSettings = false;
       } else {
         hideMainWindow();
@@ -111,7 +115,7 @@
 
   <!-- Main content -->
   <div class="flex flex-1 min-h-0">
-    <Sidebar onSettingsClick={() => (showSettings = true)} />
+    <Sidebar onSettingsClick={() => (showSettings = true)} onHelpClick={() => (showHelp = true)} />
     <main class="flex-1 min-w-0 flex flex-col">
       <ClipGrid
         searchQuery={searchQuery}
@@ -122,5 +126,6 @@
 </div>
 
 <!-- Overlays -->
+<HelpPanel bind:open={showHelp} />
 <SettingsPanel bind:open={showSettings} />
 <Toast bind:this={toast} />
