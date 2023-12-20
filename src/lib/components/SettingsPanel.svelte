@@ -93,6 +93,31 @@
           </div>
         </section>
 
+        <!-- CLI Tools -->
+        <section class="mb-5">
+          <h3 class="text-xs font-medium text-white/40 uppercase tracking-wider mb-3">CLI Tools</h3>
+          <p class="text-xs text-white/40 mb-3">
+            Install <code class="font-mono text-white/60">mclip</code> to
+            <code class="font-mono text-white/60">~/.local/bin/</code> for terminal access.
+          </p>
+          <button
+            class="w-full py-2 rounded-lg text-sm border border-white/10 transition-colors
+                   {cliResult?.ok === false
+                     ? 'text-red-400 border-red-500/30'
+                     : cliResult?.ok === true
+                       ? 'text-green-400 border-green-500/30'
+                       : 'text-white/70 hover:bg-white/5'}"
+            onclick={handleInstallCli}
+          >
+            {cliResult ? cliResult.msg : "Install mclip CLI"}
+          </button>
+          {#if cliResult?.ok}
+            <p class="text-xs text-white/30 mt-1.5">
+              Make sure <code class="font-mono">~/.local/bin</code> is in your <code class="font-mono">$PATH</code>.
+            </p>
+          {/if}
+        </section>
+
         <!-- Clipboard -->
         <section class="mb-5">
           <h3 class="text-xs font-medium text-white/40 uppercase tracking-wider mb-3">Clipboard</h3>
@@ -154,31 +179,6 @@
               {cleanupResult !== null ? `Removed ${cleanupResult} clips` : "Clean Now"}
             </button>
           </div>
-        </section>
-
-        <!-- CLI Tools -->
-        <section class="mb-5">
-          <h3 class="text-xs font-medium text-white/40 uppercase tracking-wider mb-3">CLI Tools</h3>
-          <p class="text-xs text-white/40 mb-3">
-            Install <code class="font-mono text-white/60">mclip</code> to
-            <code class="font-mono text-white/60">~/.local/bin/</code> for terminal access.
-          </p>
-          <button
-            class="w-full py-2 rounded-lg text-sm border border-white/10 transition-colors
-                   {cliResult?.ok === false
-                     ? 'text-red-400 border-red-500/30'
-                     : cliResult?.ok === true
-                       ? 'text-green-400 border-green-500/30'
-                       : 'text-white/70 hover:bg-white/5'}"
-            onclick={handleInstallCli}
-          >
-            {cliResult ? cliResult.msg : "Install mclip CLI"}
-          </button>
-          {#if cliResult?.ok}
-            <p class="text-xs text-white/30 mt-1.5">
-              Make sure <code class="font-mono">~/.local/bin</code> is in your <code class="font-mono">$PATH</code>.
-            </p>
-          {/if}
         </section>
 
         <!-- Shortcuts -->
