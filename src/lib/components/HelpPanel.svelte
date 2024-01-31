@@ -79,12 +79,33 @@
             ["mclip folder list", "List all folders"],
             ["mclip folder add \"Name\"", "Create a folder"],
             ["mclip folder remove \"Name\"", "Delete a folder"],
+            ["mclip context", "Print AI context block to paste into chat"],
+            ["mclip mcp", "Start MCP stdio server (Claude Desktop etc.)"],
           ] as [cmd, desc]}
             <div class="flex gap-3">
               <span class="text-[#6366f1]/90 shrink-0 w-44">{cmd}</span>
               <span class="text-white/35"># {desc}</span>
             </div>
           {/each}
+        </div>
+      </section>
+
+      <!-- AI Integration -->
+      <section class="mb-5">
+        <h3 class="text-xs font-medium text-white/40 uppercase tracking-wider mb-3">AI Integration</h3>
+        <ul class="space-y-2 text-sm text-white/60 list-none">
+          <li class="flex gap-2">
+            <span class="text-white/30 shrink-0">→</span>
+            <span>Run <code class="font-mono text-white/70">mclip context</code> and paste the output into any AI chat so it knows all available commands.</span>
+          </li>
+          <li class="flex gap-2">
+            <span class="text-white/30 shrink-0">→</span>
+            <span>For Claude Desktop / Cursor, add <code class="font-mono text-white/70">mclip mcp</code> as an MCP stdio server — the AI can then call your clipboard directly.</span>
+          </li>
+        </ul>
+        <div class="bg-black/30 rounded-xl p-3 font-mono text-xs mt-3 text-white/50">
+          <span class="text-white/30"># ~/.config/claude/claude_desktop_config.json</span><br/>
+          <span class="text-[#6366f1]/90">&#123;"mcpServers": &#123;"mclip": &#123;"command": "mclip", "args": ["mcp"]&#125;&#125;&#125;</span>
         </div>
       </section>
 
