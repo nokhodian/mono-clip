@@ -177,7 +177,7 @@ mclip get 7 | pbcopy
       </section>
 
       <!-- Version -->
-      <p class="text-xs text-white/20 text-center">MonoClip v0.1.0</p>
+      <p class="text-xs text-white/20 text-center">MonoClip v0.2.0</p>
     </div>
   </div>
 {/if}
