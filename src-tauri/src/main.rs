@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use tauri::Manager;
+use tauri_plugin_autostart::ManagerExt;
 use monoclip_lib::{
     commands::{clips, folders, settings, utility},
     db::connection,
@@ -45,6 +46,20 @@ fn main() {
 
             // Install mclip CLI tool into ~/.local/bin/ if bundled binary is present
             utility::auto_install_cli(&handle);
+
+            // Sync launch-at-login: make sure the LaunchAgent matches the stored setting
+            {
+                let state = app.state::<AppState>();
+                let conn = state.db.lock();
+                if let Ok(settings) = monoclip_lib::db::queries::get_settings(&conn) {
+                    let autostart = handle.autolaunch();
+                    let _ = if settings.launch_at_login {
+                        autostart.enable()
+                    } else {
+                        autostart.disable()
+                    };
+                }
+            }
 
             // Run auto-cleanup on startup
             {
