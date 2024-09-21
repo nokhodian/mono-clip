@@ -106,6 +106,8 @@ fn main() {
             utility::hide_main_window,
             utility::toggle_main_window,
             utility::install_cli,
+            utility::check_accessibility,
+            utility::open_accessibility_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running MonoClip")

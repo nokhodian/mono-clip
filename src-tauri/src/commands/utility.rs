@@ -88,6 +88,33 @@ pub fn install_cli(app: AppHandle) -> Result<String, String> {
     Ok(path)
 }
 
+/// Returns true if the Accessibility permission has been granted to this process.
+#[tauri::command]
+pub fn check_accessibility() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        // AXIsProcessTrusted via a tiny osascript probe is unreliable;
+        // use the public C API instead through a subprocess check.
+        // The cleanest way without an extra crate: call the function directly via FFI.
+        #[link(name = "ApplicationServices", kind = "framework")]
+        extern "C" {
+            fn AXIsProcessTrusted() -> bool;
+        }
+        unsafe { AXIsProcessTrusted() }
+    }
+    #[cfg(not(target_os = "macos"))]
+    true
+}
+
+/// Opens System Settings to the Accessibility privacy pane.
+#[tauri::command]
+pub fn open_accessibility_settings() {
+    let _ = std::process::Command::new("open")
+        .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+        .spawn();
+}
+
 #[tauri::command]
 pub fn toggle_main_window(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
