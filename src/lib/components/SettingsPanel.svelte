@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { settingsStore } from "$lib/stores/settings.svelte";
-  import { runAutoCleanup, installCli, checkAccessibility, openAccessibilitySettings } from "$lib/api/tauri";
+  import { runAutoCleanup, clearAllClips, installCli, checkAccessibility, openAccessibilitySettings } from "$lib/api/tauri";
+  import { clipsStore } from "$lib/stores/clips.svelte";
 
   interface Props {
     open?: boolean;
@@ -9,13 +10,24 @@
   }
   let { open = $bindable(false), onclose }: Props = $props();
 
-  let cleanupResult = $state<number | null>(null);
+  let cleanupResult = $state<string | null>(null);
+  let clearConfirm = $state(false);
   let cliResult = $state<{ ok: boolean; msg: string } | null>(null);
   let accessibilityGranted = $state<boolean | null>(null);
 
   async function handleCleanup() {
     const count = await runAutoCleanup();
-    cleanupResult = count;
+    cleanupResult = count > 0 ? `Removed ${count} clips` : "Nothing to clean yet";
+    clipsStore.load();
+    setTimeout(() => { cleanupResult = null; }, 3000);
+  }
+
+  async function handleClearAll() {
+    if (!clearConfirm) { clearConfirm = true; return; }
+    clearConfirm = false;
+    await clearAllClips();
+    clipsStore.load();
+    cleanupResult = "All clips cleared";
     setTimeout(() => { cleanupResult = null; }, 3000);
   }
 
@@ -240,13 +252,23 @@
               </div>
             {/if}
 
-            <button
-              class="w-full py-2 rounded-lg text-sm text-white/70 border border-white/10
-                     hover:bg-white/5 transition-colors"
-              onclick={handleCleanup}
-            >
-              {cleanupResult !== null ? `Removed ${cleanupResult} clips` : "Clean Now"}
-            </button>
+            <div class="flex gap-2">
+              <button
+                class="flex-1 py-2 rounded-lg text-sm border transition-colors
+                       {cleanupResult ? 'text-green-400 border-green-500/30 bg-green-500/5' : 'text-white/70 border-white/10 hover:bg-white/5'}"
+                onclick={handleCleanup}
+              >
+                {cleanupResult ?? "Clean Now"}
+              </button>
+              <button
+                class="flex-1 py-2 rounded-lg text-sm border transition-colors
+                       {clearConfirm ? 'text-red-400 border-red-500/40 bg-red-500/10' : 'text-white/50 border-white/8 hover:border-red-500/30 hover:text-red-400'}"
+                onclick={handleClearAll}
+              >
+                {clearConfirm ? "Tap again to confirm" : "Clear All Clips"}
+              </button>
+            </div>
+            <p class="text-xs text-white/25">Clean Now removes old clips and trash. Clear All deletes everything except pinned.</p>
           </div>
         </section>
 
