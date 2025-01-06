@@ -31,6 +31,7 @@ regex = "1"
 arboard = "3.6"
 image = { version = "0.25", default-features = false, features = ["png"] }
 clap = { version = "4", features = ["derive"] }
+ureq = { version = "2", features = ["json"] }
 
 [[bin]]
 name = "mclip"

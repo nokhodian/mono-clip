@@ -93,10 +93,6 @@ pub fn install_cli(app: AppHandle) -> Result<String, String> {
 pub fn check_accessibility() -> bool {
     #[cfg(target_os = "macos")]
     {
-        use std::process::Command;
-        // AXIsProcessTrusted via a tiny osascript probe is unreliable;
-        // use the public C API instead through a subprocess check.
-        // The cleanest way without an extra crate: call the function directly via FFI.
         #[link(name = "ApplicationServices", kind = "framework")]
         extern "C" {
             fn AXIsProcessTrusted() -> bool;
@@ -113,6 +109,35 @@ pub fn open_accessibility_settings() {
     let _ = std::process::Command::new("open")
         .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
         .spawn();
+}
+
+/// Shared update logic — detects Homebrew and runs upgrade or opens browser.
+pub fn do_update_inner() -> Result<(), String> {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let path_str = exe.to_string_lossy().to_lowercase();
+    let is_homebrew = path_str.contains("caskroom") || path_str.contains("homebrew");
+
+    if is_homebrew {
+        log::info!("Updating via Homebrew");
+        std::thread::spawn(|| {
+            let _ = std::process::Command::new("brew")
+                .args(["upgrade", "--cask", "mono-clip"])
+                .spawn();
+        });
+    } else {
+        log::info!("Opening releases page for manual update");
+        let _ = std::process::Command::new("open")
+            .arg("https://github.com/nokhodian/mono-clip/releases/latest")
+            .spawn();
+    }
+    Ok(())
+}
+
+/// Trigger an update: if Homebrew installed, run `brew upgrade --cask mono-clip`;
+/// otherwise open the GitHub releases page in the default browser.
+#[tauri::command]
+pub fn do_update(_app: AppHandle) -> Result<(), String> {
+    do_update_inner()
 }
 
 #[tauri::command]
