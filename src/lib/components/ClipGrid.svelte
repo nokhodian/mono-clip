@@ -31,12 +31,10 @@
   {:else if clipsStore.items.length === 0}
     <EmptyState query={searchQuery} {folderName} />
   {:else}
-    <!-- Masonry-style 2-column grid -->
-    <div class="columns-2 gap-2 space-y-2">
+    <!-- 2-column grid: row-first order (left→right, top→bottom), newest at top -->
+    <div class="grid grid-cols-2 gap-2">
       {#each clipsStore.items as clip, i (clip.id)}
-        <div class="break-inside-avoid mb-2">
-          <ClipCard {clip} index={i} onCopy={handleCopy} />
-        </div>
+        <ClipCard {clip} index={i} onCopy={handleCopy} />
       {/each}
     </div>
   {/if}
