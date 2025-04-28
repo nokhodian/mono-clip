@@ -10,40 +10,53 @@ use std::str::FromStr;
 ///
 /// Strategy:
 ///   1. Save the current clipboard contents
-///   2. Simulate Cmd+C to copy the selection into the clipboard
-///   3. Read the new clipboard value
-///   4. Restore the original clipboard so the user doesn't notice
+///   2. Write a unique sentinel to the clipboard
+///   3. Simulate Cmd+C to copy the selection into the clipboard
+///   4. Read the clipboard — if it still matches the sentinel, nothing was selected
+///   5. Restore the original clipboard so the user doesn't notice
 ///
-/// Returns `None` if nothing was selected or the clipboard didn't change.
+/// The sentinel approach avoids false positives from Universal Clipboard (iCloud /
+/// iPhone) which can asynchronously replace clipboard contents between steps,
+/// making a simple "did the content change?" check unreliable.
 fn capture_selected_text(app: &AppHandle) -> Option<String> {
     // 1. Save current clipboard
     let original = app.clipboard().read_text().ok().unwrap_or_default();
 
-    // 2. Simulate Cmd+C in the frontmost app
+    // 2. Write a unique sentinel so we can tell if Cmd+C actually wrote something
+    let sentinel = format!("__monoclip_sentinel_{}", std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos());
+    if app.clipboard().write_text(&sentinel).is_err() {
+        return None;
+    }
+
+    // 3. Simulate Cmd+C in the frontmost app
     let status = std::process::Command::new("osascript")
         .args(["-e", "tell application \"System Events\" to keystroke \"c\" using command down"])
         .status();
 
     if status.is_err() {
+        // Restore original clipboard before returning
+        let _ = app.clipboard().write_text(&original);
         return None;
     }
 
-    // 3. Brief pause for clipboard to settle
-    std::thread::sleep(std::time::Duration::from_millis(120));
+    // 4. Brief pause for the local Cmd+C to land
+    std::thread::sleep(std::time::Duration::from_millis(150));
 
-    // 4. Read the (potentially updated) clipboard
-    let selected = app.clipboard().read_text().ok().unwrap_or_default();
+    // 5. Read the clipboard
+    let current = app.clipboard().read_text().ok().unwrap_or_default();
 
-    // 5. Restore original clipboard contents
-    if !original.is_empty() && selected != original {
-        let _ = app.clipboard().write_text(original.clone());
-    }
+    // 6. Restore original clipboard
+    let _ = app.clipboard().write_text(&original);
 
-    // Return only if content actually changed (meaning text was selected)
-    if selected.is_empty() || selected == original {
+    // If the clipboard still holds our sentinel, Cmd+C didn't fire (nothing selected).
+    // Also ignore if the clipboard is empty or matches the sentinel.
+    if current.is_empty() || current == sentinel || current.starts_with("__monoclip_sentinel_") {
         None
     } else {
-        Some(selected)
+        Some(current)
     }
 }
 
