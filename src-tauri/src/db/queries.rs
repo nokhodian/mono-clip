@@ -291,6 +291,26 @@ pub fn clear_all_clips(conn: &Connection) -> Result<i64> {
     Ok(count as i64)
 }
 
+pub fn clear_folder_clips(conn: &Connection, folder_id: i64) -> Result<i64> {
+    let count = conn.execute(
+        "DELETE FROM clip_items WHERE folder_id = ?1 AND is_pinned = 0",
+        params![folder_id],
+    )?;
+    Ok(count as i64)
+}
+
+pub fn export_folder_clips(conn: &Connection, folder_id: i64) -> Result<Vec<ClipItem>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, content, content_type, preview, folder_id, is_pinned, is_deleted, source_app, created_at, updated_at
+         FROM clip_items
+         WHERE folder_id = ?1 AND is_deleted = 0
+         ORDER BY is_pinned DESC, updated_at DESC"
+    )?;
+    let items = stmt.query_map(params![folder_id], map_clip_row)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(items)
+}
+
 // ─── Settings Queries ─────────────────────────────────────────────────────────
 
 pub fn get_settings(conn: &Connection) -> Result<Settings> {

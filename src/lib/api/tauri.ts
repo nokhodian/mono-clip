@@ -107,5 +107,7 @@ export const hideMainWindow = () => invoke<void>("hide_main_window");
 export const toggleMainWindow = () => invoke<void>("toggle_main_window");
 export const installCli = () => invoke<string>("install_cli");
 export const clearAllClips = () => invoke<number>("clear_all_clips");
+export const clearFolderClips = (folderId: number) => invoke<number>("clear_folder_clips", { folderId });
+export const exportFolderClips = (folderId: number) => invoke<string>("export_folder_clips", { folderId });
 export const checkAccessibility = () => invoke<boolean>("check_accessibility");
 export const openAccessibilitySettings = () => invoke<void>("open_accessibility_settings");
