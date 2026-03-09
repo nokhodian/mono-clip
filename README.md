@@ -124,9 +124,24 @@ cargo tauri build
 
 > 💡 The first build takes a few minutes while Rust compiles all dependencies. Subsequent builds are much faster.
 
-### Option B — Download Release *(coming soon)*
+### Option B — Homebrew *(recommended)*
 
-Pre-built `.dmg` releases will be available on the [Releases page](https://github.com/nokhodian/mono-clip/releases) once v1.0 ships.
+```bash
+brew tap nokhodian/tap
+brew install --cask mono-clip
+```
+
+That's it. Homebrew handles everything — download, verify checksum, install the `.app`.
+
+### Option C — Direct Download
+
+Grab the latest `.dmg` from the [Releases page](https://github.com/nokhodian/mono-clip/releases/tag/v0.1.0):
+
+1. Download `MonoClip_0.1.0_aarch64.dmg`
+2. Open the `.dmg` and drag **MonoClip.app** to `/Applications`
+3. Launch from Spotlight or `/Applications`
+
+> **Apple Silicon only** — the current release targets `aarch64`. Intel builds coming soon.
 
 <br/>
 
