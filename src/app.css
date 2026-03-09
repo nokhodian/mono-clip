@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --accent: #6366f1;
+  --accent-light: #818cf8;
+  --window-bg: rgba(28, 28, 30, 0.85);
+  --window-bg-light: rgba(242, 242, 247, 0.85);
+  --sidebar-bg: rgba(20, 20, 22, 0.6);
+  --sidebar-bg-light: rgba(230, 230, 235, 0.6);
+  --card-bg: rgba(44, 44, 46, 0.7);
+  --card-bg-light: rgba(255, 255, 255, 0.7);
+  --text-primary: rgba(255, 255, 255, 0.95);
+  --text-primary-light: rgba(0, 0, 0, 0.85);
+  --text-secondary: rgba(255, 255, 255, 0.5);
+  --text-secondary-light: rgba(0, 0, 0, 0.45);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-light: rgba(0, 0, 0, 0.1);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: transparent;
+}
+
+/* Allow text selection inside content areas */
+.selectable {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* Dark theme defaults */
+.dark .scrollbar-thumb { background: rgba(255,255,255,0.2); }
+.light .scrollbar-thumb { background: rgba(0,0,0,0.2); }
