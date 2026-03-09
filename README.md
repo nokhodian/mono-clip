@@ -1,17 +1,8 @@
 <div align="center">
 
-<br/>
+<img src="banner.png" width="100%" alt="MonoClip — Your clipboard, finally under control"/>
 
-```
-███╗   ███╗ ██████╗ ███╗   ██╗ ██████╗  ██████╗██╗     ██╗██████╗
-████╗ ████║██╔═══██╗████╗  ██║██╔═══██╗██╔════╝██║     ██║██╔══██╗
-██╔████╔██║██║   ██║██╔██╗ ██║██║   ██║██║     ██║     ██║██████╔╝
-██║╚██╔╝██║██║   ██║██║╚██╗██║██║   ██║██║     ██║     ██║██╔═══╝
-██║ ╚═╝ ██║╚██████╔╝██║ ╚████║╚██████╔╝╚██████╗███████╗██║██║
-╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═══╝ ╚═════╝  ╚═════╝╚══════╝╚═╝╚═╝
-```
-
-### Your clipboard, finally under control. ✂️
+<br/><br/>
 
 **A blazing-fast, macOS-native clipboard manager that lives in your menu bar and gets out of your way.**
 
@@ -24,16 +15,9 @@
 [![License](https://img.shields.io/badge/license-MIT-6366f1?style=flat-square)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/nokhodian/mono-clip?style=flat-square&color=6366f1)](https://github.com/nokhodian/mono-clip/stargazers)
 
-<br/>
+<br/><br/>
 
-<!--
-  📸 SCREENSHOT: Replace this comment with a screenshot of the main window
-  Recommended: 680x520px, showing the glass-morphism panel with some clips loaded
-
-  <img src=".github/assets/screenshot-main.png" width="680" alt="MonoClip main window"/>
--->
-
-<img src="https://placehold.co/680x420/1c1c1e/6366f1?text=📋+MonoClip+Screenshot+Coming+Soon&font=montserrat" width="680" alt="MonoClip — add your screenshot here" style="border-radius: 16px;"/>
+<img src="screenshot.png" width="680" alt="MonoClip app screenshot"/>
 
 <br/><br/>
 
