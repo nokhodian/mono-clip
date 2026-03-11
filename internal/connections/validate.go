@@ -1,6 +1,7 @@
 package connections
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,26 +12,26 @@ import (
 // ValidateConnection calls the platform-specific validator and returns the
 // resolved account identifier (username/email/org name). Returns ("", nil)
 // for platforms with no validation or browser-session platforms.
-func ValidateConnection(c *Connection) (accountID string, err error) {
+func ValidateConnection(ctx context.Context, c *Connection) (accountID string, err error) {
 	switch c.Platform {
 	case "github":
-		return validateGitHub(c)
+		return validateGitHub(ctx, c)
 	case "notion":
-		return validateNotion(c)
+		return validateNotion(ctx, c)
 	case "airtable":
-		return validateAirtable(c)
+		return validateAirtable(ctx, c)
 	case "jira":
-		return validateJira(c)
+		return validateJira(ctx, c)
 	case "linear":
-		return validateLinear(c)
+		return validateLinear(ctx, c)
 	case "stripe":
-		return validateStripe(c)
+		return validateStripe(ctx, c)
 	case "slack":
-		return validateSlack(c)
+		return validateSlack(ctx, c)
 	case "discord":
-		return validateDiscord(c)
+		return validateDiscord(ctx, c)
 	case "twilio":
-		return validateTwilio(c)
+		return validateTwilio(ctx, c)
 	case "postgresql", "mysql", "mongodb", "redis":
 		cs := getStr(c.Data, "connection_string")
 		if cs == "" {
@@ -44,12 +45,15 @@ func ValidateConnection(c *Connection) (accountID string, err error) {
 }
 
 // validateGitHub validates a GitHub connection using the token or access_token field.
-func validateGitHub(c *Connection) (string, error) {
+func validateGitHub(ctx context.Context, c *Connection) (string, error) {
 	token := getStr(c.Data, "token")
 	if token == "" {
 		token = getStr(c.Data, "access_token")
 	}
-	body, status, err := doGET("https://api.github.com/user", "Bearer "+token)
+	if token == "" {
+		return "", fmt.Errorf("validateGitHub: missing token or access_token")
+	}
+	body, status, err := doGET(ctx, "https://api.github.com/user", "Bearer "+token)
 	if err != nil {
 		return "", fmt.Errorf("validateGitHub: %w", err)
 	}
@@ -69,13 +73,13 @@ func validateGitHub(c *Connection) (string, error) {
 }
 
 // validateNotion validates a Notion connection using the token or access_token field.
-func validateNotion(c *Connection) (string, error) {
+func validateNotion(ctx context.Context, c *Connection) (string, error) {
 	token := getStr(c.Data, "token")
 	if token == "" {
 		token = getStr(c.Data, "access_token")
 	}
 
-	req, err := http.NewRequest(http.MethodGet, "https://api.notion.com/v1/users/me", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.notion.com/v1/users/me", nil)
 	if err != nil {
 		return "", fmt.Errorf("validateNotion: create request: %w", err)
 	}
@@ -98,48 +102,51 @@ func validateNotion(c *Connection) (string, error) {
 		return "", fmt.Errorf("validateNotion: unexpected status %d", resp.StatusCode)
 	}
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
+	var r struct {
+		Name string `json:"name"`
+		Bot  struct {
+			WorkspaceName string `json:"workspace_name"`
+		} `json:"bot"`
+	}
+	if err := json.Unmarshal(body, &r); err != nil {
 		return "", fmt.Errorf("validateNotion: parse response: %w", err)
 	}
 
-	// Try bot.workspace_name first
-	if bot, ok := result["bot"].(map[string]interface{}); ok {
-		if wsName, ok := bot["workspace_name"].(string); ok && wsName != "" {
-			return wsName, nil
-		}
+	if r.Bot.WorkspaceName != "" {
+		return r.Bot.WorkspaceName, nil
 	}
-	// Fall back to name
-	if name, ok := result["name"].(string); ok {
-		return name, nil
+	if r.Name != "" {
+		return r.Name, nil
 	}
-	return "", nil
+	return "", fmt.Errorf("validateNotion: could not resolve account name from response")
 }
 
 // validateAirtable validates an Airtable connection using the api_key or access_token field.
-func validateAirtable(c *Connection) (string, error) {
+func validateAirtable(ctx context.Context, c *Connection) (string, error) {
 	token := getStr(c.Data, "api_key")
 	if token == "" {
 		token = getStr(c.Data, "access_token")
 	}
-	body, status, err := doGET("https://api.airtable.com/v0/meta/whoami", "Bearer "+token)
+	body, status, err := doGET(ctx, "https://api.airtable.com/v0/meta/whoami", "Bearer "+token)
 	if err != nil {
 		return "", fmt.Errorf("validateAirtable: %w", err)
 	}
 	if status != 200 {
 		return "", fmt.Errorf("validateAirtable: unexpected status %d", status)
 	}
-	var resp struct {
-		ID string `json:"id"`
+	var r struct {
+		ID    string `json:"id"`
+		Email string `json:"email"`
 	}
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return "", fmt.Errorf("validateAirtable: parse response: %w", err)
+	_ = json.Unmarshal(body, &r)
+	if r.Email != "" {
+		return r.Email, nil
 	}
-	return resp.ID, nil
+	return r.ID, nil
 }
 
 // validateJira validates a Jira connection using email, api_token, and domain fields.
-func validateJira(c *Connection) (string, error) {
+func validateJira(ctx context.Context, c *Connection) (string, error) {
 	email := getStr(c.Data, "email")
 	apiToken := getStr(c.Data, "api_token")
 	domain := getStr(c.Data, "domain")
@@ -155,7 +162,7 @@ func validateJira(c *Connection) (string, error) {
 	}
 
 	url := fmt.Sprintf("https://%s/rest/api/3/myself", domain)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", fmt.Errorf("validateJira: create request: %w", err)
 	}
@@ -187,14 +194,14 @@ func validateJira(c *Connection) (string, error) {
 }
 
 // validateLinear validates a Linear connection using the api_key or access_token field.
-func validateLinear(c *Connection) (string, error) {
+func validateLinear(ctx context.Context, c *Connection) (string, error) {
 	token := getStr(c.Data, "api_key")
 	if token == "" {
 		token = getStr(c.Data, "access_token")
 	}
 
 	bodyStr := `{"query":"{ viewer { name email } }"}`
-	req, err := http.NewRequest(http.MethodPost, "https://api.linear.app/graphql", strings.NewReader(bodyStr))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.linear.app/graphql", strings.NewReader(bodyStr))
 	if err != nil {
 		return "", fmt.Errorf("validateLinear: create request: %w", err)
 	}
@@ -217,28 +224,38 @@ func validateLinear(c *Connection) (string, error) {
 		return "", fmt.Errorf("validateLinear: unexpected status %d", resp.StatusCode)
 	}
 
-	var result struct {
+	var r struct {
 		Data struct {
 			Viewer struct {
 				Email string `json:"email"`
+				Name  string `json:"name"`
 			} `json:"viewer"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := json.Unmarshal(body, &r); err != nil {
 		return "", fmt.Errorf("validateLinear: parse response: %w", err)
 	}
-	return result.Data.Viewer.Email, nil
+	if r.Data.Viewer.Email != "" {
+		return r.Data.Viewer.Email, nil
+	}
+	if r.Data.Viewer.Name != "" {
+		return r.Data.Viewer.Name, nil
+	}
+	return "", fmt.Errorf("validateLinear: viewer has no email or name")
 }
 
 // validateStripe validates a Stripe connection using the secret_key field.
-func validateStripe(c *Connection) (string, error) {
-	secretKey := getStr(c.Data, "secret_key")
+func validateStripe(ctx context.Context, c *Connection) (string, error) {
+	key := getStr(c.Data, "secret_key")
+	if key == "" {
+		return "", fmt.Errorf("validateStripe: missing secret_key")
+	}
 
-	req, err := http.NewRequest(http.MethodGet, "https://api.stripe.com/v1/account", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.stripe.com/v1/account", nil)
 	if err != nil {
 		return "", fmt.Errorf("validateStripe: create request: %w", err)
 	}
-	req.SetBasicAuth(secretKey, "")
+	req.SetBasicAuth(key, "")
 	req.Header.Set("Accept", "application/json")
 
 	client := &http.Client{}
@@ -272,9 +289,9 @@ func validateStripe(c *Connection) (string, error) {
 }
 
 // validateSlack validates a Slack connection using the access_token field.
-func validateSlack(c *Connection) (string, error) {
+func validateSlack(ctx context.Context, c *Connection) (string, error) {
 	token := getStr(c.Data, "access_token")
-	body, status, err := doGET("https://slack.com/api/auth.test", "Bearer "+token)
+	body, status, err := doGET(ctx, "https://slack.com/api/auth.test", "Bearer "+token)
 	if err != nil {
 		return "", fmt.Errorf("validateSlack: %w", err)
 	}
@@ -298,9 +315,9 @@ func validateSlack(c *Connection) (string, error) {
 }
 
 // validateDiscord validates a Discord bot connection using the bot_token field.
-func validateDiscord(c *Connection) (string, error) {
+func validateDiscord(ctx context.Context, c *Connection) (string, error) {
 	token := getStr(c.Data, "bot_token")
-	body, status, err := doGET("https://discord.com/api/v10/users/@me", "Bot "+token)
+	body, status, err := doGET(ctx, "https://discord.com/api/v10/users/@me", "Bot "+token)
 	if err != nil {
 		return "", fmt.Errorf("validateDiscord: %w", err)
 	}
@@ -318,12 +335,16 @@ func validateDiscord(c *Connection) (string, error) {
 }
 
 // validateTwilio validates a Twilio connection using account_sid and auth_token fields.
-func validateTwilio(c *Connection) (string, error) {
+func validateTwilio(ctx context.Context, c *Connection) (string, error) {
 	accountSID := getStr(c.Data, "account_sid")
 	authToken := getStr(c.Data, "auth_token")
 
+	if accountSID == "" || authToken == "" {
+		return "", fmt.Errorf("validateTwilio: missing account_sid or auth_token")
+	}
+
 	url := fmt.Sprintf("https://api.twilio.com/2010-04-01/Accounts/%s.json", accountSID)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", fmt.Errorf("validateTwilio: create request: %w", err)
 	}
@@ -369,8 +390,8 @@ func getStr(data map[string]interface{}, key string) string {
 
 // doGET makes a GET request with the given Authorization header (empty = no header),
 // sets Accept: application/json, and returns body bytes, HTTP status code, and any error.
-func doGET(url, authHeader string) ([]byte, int, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func doGET(ctx context.Context, url, authHeader string) ([]byte, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, 0, fmt.Errorf("doGET: create request: %w", err)
 	}
