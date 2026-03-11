@@ -4,6 +4,65 @@
     onclose?: () => void;
   }
   let { open = $bindable(false), onclose }: Props = $props();
+
+  let copied = $state(false);
+
+  const AI_CONTEXT = `## mclip — MonoClip CLI context
+
+mclip is a command-line tool for managing clipboard history on macOS via MonoClip.
+Use it to list, search, add, remove, and organise clips and folders from any terminal
+or AI coding session.
+
+### Clip commands
+
+| Command | Description |
+|---------|-------------|
+| mclip list | List recent Inbox items (default: 20) |
+| mclip list --folder Work | List items in a named folder |
+| mclip list --search <query> | Search clips by content |
+| mclip list --limit 50 | Show up to 50 items |
+| mclip add "text" | Add a text clip to Inbox |
+| mclip add "text" --folder Work | Add to a specific folder |
+| mclip get <id> | Print raw content of a clip (pipe-friendly) |
+| mclip remove <id> | Soft-delete a clip |
+| mclip pin <id> | Pin a clip (protects from auto-cleanup) |
+| mclip unpin <id> | Unpin a clip |
+
+### Folder commands
+
+| Command | Description |
+|---------|-------------|
+| mclip folder list | List all folders with item counts |
+| mclip folder add "Name" | Create a new folder |
+| mclip folder remove "Name" | Delete a folder (items move to Inbox) |
+
+### Notes
+- IDs come from the ID column in \`mclip list\` output.
+- Folder names are case-insensitive.
+- \`mclip get <id>\` outputs raw text with no trailing newline — ideal for piping:
+  mclip get 42 | pbcopy
+- Pinned clips are never removed by auto-cleanup.
+
+### Examples
+\`\`\`bash
+# Show what's in the Work folder
+mclip list --folder Work --limit 50
+
+# Find recent URLs
+mclip list --search http
+
+# Add a snippet directly from terminal
+mclip add "SELECT * FROM users LIMIT 10" --folder SQL
+
+# Pipe a clip back to the system clipboard
+mclip get 7 | pbcopy
+\`\`\``;
+
+  async function copyContext() {
+    await navigator.clipboard.writeText(AI_CONTEXT);
+    copied = true;
+    setTimeout(() => { copied = false; }, 2500);
+  }
 </script>
 
 {#if open}
@@ -79,8 +138,6 @@
             ["mclip folder list", "List all folders"],
             ["mclip folder add \"Name\"", "Create a folder"],
             ["mclip folder remove \"Name\"", "Delete a folder"],
-            ["mclip context", "Print AI context block to paste into chat"],
-            ["mclip mcp", "Start MCP stdio server (Claude Desktop etc.)"],
           ] as [cmd, desc]}
             <div class="flex gap-3">
               <span class="text-[#6366f1]/90 shrink-0 w-44">{cmd}</span>
@@ -90,22 +147,32 @@
         </div>
       </section>
 
-      <!-- AI Integration -->
+      <!-- AI Context -->
       <section class="mb-5">
-        <h3 class="text-xs font-medium text-white/40 uppercase tracking-wider mb-3">AI Integration</h3>
-        <ul class="space-y-2 text-sm text-white/60 list-none">
-          <li class="flex gap-2">
-            <span class="text-white/30 shrink-0">→</span>
-            <span>Run <code class="font-mono text-white/70">mclip context</code> and paste the output into any AI chat so it knows all available commands.</span>
-          </li>
-          <li class="flex gap-2">
-            <span class="text-white/30 shrink-0">→</span>
-            <span>For Claude Desktop / Cursor, add <code class="font-mono text-white/70">mclip mcp</code> as an MCP stdio server — the AI can then call your clipboard directly.</span>
-          </li>
-        </ul>
-        <div class="bg-black/30 rounded-xl p-3 font-mono text-xs mt-3 text-white/50">
-          <span class="text-white/30"># ~/.config/claude/claude_desktop_config.json</span><br/>
-          <span class="text-[#6366f1]/90">&#123;"mcpServers": &#123;"mclip": &#123;"command": "mclip", "args": ["mcp"]&#125;&#125;&#125;</span>
+        <h3 class="text-xs font-medium text-white/40 uppercase tracking-wider mb-3">Use with AI</h3>
+        <p class="text-xs text-white/45 mb-3 leading-relaxed">
+          Copy the context below and paste it into any AI coding session — Claude, Cursor, ChatGPT, etc.
+          The AI will then understand all <code class="font-mono text-white/65">mclip</code> commands and
+          can manage your clipboard history on your behalf.
+          You can also save it to
+          <code class="font-mono text-white/65">CLAUDE.md</code> or
+          <code class="font-mono text-white/65">.cursorrules</code> so it's always available.
+        </p>
+
+        <!-- Context preview -->
+        <div class="relative">
+          <pre class="bg-black/40 border border-white/8 rounded-xl p-3 text-xs text-white/45
+                      font-mono leading-relaxed overflow-hidden max-h-28
+                      [mask-image:linear-gradient(to_bottom,white_40%,transparent)]">{AI_CONTEXT}</pre>
+          <button
+            class="mt-2 w-full py-2.5 rounded-xl text-sm font-medium border transition-all duration-200
+                   {copied
+                     ? 'bg-green-500/15 border-green-500/30 text-green-400'
+                     : 'bg-[#6366f1]/10 border-[#6366f1]/25 text-[#a5b4fc] hover:bg-[#6366f1]/20'}"
+            onclick={copyContext}
+          >
+            {copied ? '✓ Copied to clipboard' : 'Copy AI Context'}
+          </button>
         </div>
       </section>
 
