@@ -7,8 +7,9 @@
 
   interface Props {
     onSettingsClick?: () => void;
+    onHelpClick?: () => void;
   }
-  let { onSettingsClick }: Props = $props();
+  let { onSettingsClick, onHelpClick }: Props = $props();
 
   let showNewFolder = $state(false);
   let editingFolder = $state<Folder | null>(null);
@@ -90,6 +91,14 @@
     >
       <span class="text-base">+</span>
       <span>New Folder</span>
+    </button>
+    <button
+      class="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm
+             text-white/40 hover:text-white/70 hover:bg-white/5 transition-colors"
+      onclick={onHelpClick}
+    >
+      <span>?</span>
+      <span>Help</span>
     </button>
     <button
       class="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm
