@@ -1,0 +1,394 @@
+package connections
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+)
+
+// ValidateConnection calls the platform-specific validator and returns the
+// resolved account identifier (username/email/org name). Returns ("", nil)
+// for platforms with no validation or browser-session platforms.
+func ValidateConnection(c *Connection) (accountID string, err error) {
+	switch c.Platform {
+	case "github":
+		return validateGitHub(c)
+	case "notion":
+		return validateNotion(c)
+	case "airtable":
+		return validateAirtable(c)
+	case "jira":
+		return validateJira(c)
+	case "linear":
+		return validateLinear(c)
+	case "stripe":
+		return validateStripe(c)
+	case "slack":
+		return validateSlack(c)
+	case "discord":
+		return validateDiscord(c)
+	case "twilio":
+		return validateTwilio(c)
+	case "postgresql", "mysql", "mongodb", "redis":
+		cs := getStr(c.Data, "connection_string")
+		if cs == "" {
+			return "", fmt.Errorf("validate %s: missing connection_string", c.Platform)
+		}
+		end := min(len(cs), 30)
+		return cs[:end] + "...", nil
+	default:
+		return "", nil
+	}
+}
+
+// validateGitHub validates a GitHub connection using the token or access_token field.
+func validateGitHub(c *Connection) (string, error) {
+	token := getStr(c.Data, "token")
+	if token == "" {
+		token = getStr(c.Data, "access_token")
+	}
+	body, status, err := doGET("https://api.github.com/user", "Bearer "+token)
+	if err != nil {
+		return "", fmt.Errorf("validateGitHub: %w", err)
+	}
+	if status != 200 {
+		return "", fmt.Errorf("validateGitHub: unexpected status %d", status)
+	}
+	var resp struct {
+		Login string `json:"login"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return "", fmt.Errorf("validateGitHub: parse response: %w", err)
+	}
+	if resp.Login == "" {
+		return "", fmt.Errorf("validateGitHub: empty login in response")
+	}
+	return resp.Login, nil
+}
+
+// validateNotion validates a Notion connection using the token or access_token field.
+func validateNotion(c *Connection) (string, error) {
+	token := getStr(c.Data, "token")
+	if token == "" {
+		token = getStr(c.Data, "access_token")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, "https://api.notion.com/v1/users/me", nil)
+	if err != nil {
+		return "", fmt.Errorf("validateNotion: create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Notion-Version", "2022-06-28")
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("validateNotion: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("validateNotion: read body: %w", err)
+	}
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("validateNotion: unexpected status %d", resp.StatusCode)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("validateNotion: parse response: %w", err)
+	}
+
+	// Try bot.workspace_name first
+	if bot, ok := result["bot"].(map[string]interface{}); ok {
+		if wsName, ok := bot["workspace_name"].(string); ok && wsName != "" {
+			return wsName, nil
+		}
+	}
+	// Fall back to name
+	if name, ok := result["name"].(string); ok {
+		return name, nil
+	}
+	return "", nil
+}
+
+// validateAirtable validates an Airtable connection using the api_key or access_token field.
+func validateAirtable(c *Connection) (string, error) {
+	token := getStr(c.Data, "api_key")
+	if token == "" {
+		token = getStr(c.Data, "access_token")
+	}
+	body, status, err := doGET("https://api.airtable.com/v0/meta/whoami", "Bearer "+token)
+	if err != nil {
+		return "", fmt.Errorf("validateAirtable: %w", err)
+	}
+	if status != 200 {
+		return "", fmt.Errorf("validateAirtable: unexpected status %d", status)
+	}
+	var resp struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return "", fmt.Errorf("validateAirtable: parse response: %w", err)
+	}
+	return resp.ID, nil
+}
+
+// validateJira validates a Jira connection using email, api_token, and domain fields.
+func validateJira(c *Connection) (string, error) {
+	email := getStr(c.Data, "email")
+	apiToken := getStr(c.Data, "api_token")
+	domain := getStr(c.Data, "domain")
+
+	if email == "" {
+		return "", fmt.Errorf("validateJira: missing email")
+	}
+	if apiToken == "" {
+		return "", fmt.Errorf("validateJira: missing api_token")
+	}
+	if domain == "" {
+		return "", fmt.Errorf("validateJira: missing domain")
+	}
+
+	url := fmt.Sprintf("https://%s/rest/api/3/myself", domain)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("validateJira: create request: %w", err)
+	}
+	req.SetBasicAuth(email, apiToken)
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("validateJira: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("validateJira: read body: %w", err)
+	}
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("validateJira: unexpected status %d", resp.StatusCode)
+	}
+
+	var result struct {
+		DisplayName string `json:"displayName"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("validateJira: parse response: %w", err)
+	}
+	return result.DisplayName, nil
+}
+
+// validateLinear validates a Linear connection using the api_key or access_token field.
+func validateLinear(c *Connection) (string, error) {
+	token := getStr(c.Data, "api_key")
+	if token == "" {
+		token = getStr(c.Data, "access_token")
+	}
+
+	bodyStr := `{"query":"{ viewer { name email } }"}`
+	req, err := http.NewRequest(http.MethodPost, "https://api.linear.app/graphql", strings.NewReader(bodyStr))
+	if err != nil {
+		return "", fmt.Errorf("validateLinear: create request: %w", err)
+	}
+	req.Header.Set("Authorization", token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("validateLinear: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("validateLinear: read body: %w", err)
+	}
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("validateLinear: unexpected status %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Data struct {
+			Viewer struct {
+				Email string `json:"email"`
+			} `json:"viewer"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("validateLinear: parse response: %w", err)
+	}
+	return result.Data.Viewer.Email, nil
+}
+
+// validateStripe validates a Stripe connection using the secret_key field.
+func validateStripe(c *Connection) (string, error) {
+	secretKey := getStr(c.Data, "secret_key")
+
+	req, err := http.NewRequest(http.MethodGet, "https://api.stripe.com/v1/account", nil)
+	if err != nil {
+		return "", fmt.Errorf("validateStripe: create request: %w", err)
+	}
+	req.SetBasicAuth(secretKey, "")
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("validateStripe: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("validateStripe: read body: %w", err)
+	}
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("validateStripe: unexpected status %d", resp.StatusCode)
+	}
+
+	var result struct {
+		BusinessProfile struct {
+			Name string `json:"name"`
+		} `json:"business_profile"`
+		Email string `json:"email"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("validateStripe: parse response: %w", err)
+	}
+	if result.BusinessProfile.Name != "" {
+		return result.BusinessProfile.Name, nil
+	}
+	return result.Email, nil
+}
+
+// validateSlack validates a Slack connection using the access_token field.
+func validateSlack(c *Connection) (string, error) {
+	token := getStr(c.Data, "access_token")
+	body, status, err := doGET("https://slack.com/api/auth.test", "Bearer "+token)
+	if err != nil {
+		return "", fmt.Errorf("validateSlack: %w", err)
+	}
+	if status != 200 {
+		return "", fmt.Errorf("validateSlack: unexpected status %d", status)
+	}
+
+	var resp struct {
+		OK    bool   `json:"ok"`
+		Team  string `json:"team"`
+		User  string `json:"user"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return "", fmt.Errorf("validateSlack: parse response: %w", err)
+	}
+	if !resp.OK {
+		return "", fmt.Errorf("validateSlack: api error: %s", resp.Error)
+	}
+	return fmt.Sprintf("%s / %s", resp.Team, resp.User), nil
+}
+
+// validateDiscord validates a Discord bot connection using the bot_token field.
+func validateDiscord(c *Connection) (string, error) {
+	token := getStr(c.Data, "bot_token")
+	body, status, err := doGET("https://discord.com/api/v10/users/@me", "Bot "+token)
+	if err != nil {
+		return "", fmt.Errorf("validateDiscord: %w", err)
+	}
+	if status != 200 {
+		return "", fmt.Errorf("validateDiscord: unexpected status %d", status)
+	}
+
+	var resp struct {
+		Username string `json:"username"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return "", fmt.Errorf("validateDiscord: parse response: %w", err)
+	}
+	return resp.Username, nil
+}
+
+// validateTwilio validates a Twilio connection using account_sid and auth_token fields.
+func validateTwilio(c *Connection) (string, error) {
+	accountSID := getStr(c.Data, "account_sid")
+	authToken := getStr(c.Data, "auth_token")
+
+	url := fmt.Sprintf("https://api.twilio.com/2010-04-01/Accounts/%s.json", accountSID)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("validateTwilio: create request: %w", err)
+	}
+	req.SetBasicAuth(accountSID, authToken)
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("validateTwilio: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("validateTwilio: read body: %w", err)
+	}
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("validateTwilio: unexpected status %d", resp.StatusCode)
+	}
+
+	var result struct {
+		FriendlyName string `json:"friendly_name"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("validateTwilio: parse response: %w", err)
+	}
+	return result.FriendlyName, nil
+}
+
+// getStr extracts a string value from a map, returning "" if missing or not a string.
+func getStr(data map[string]interface{}, key string) string {
+	if data == nil {
+		return ""
+	}
+	v, ok := data[key]
+	if !ok {
+		return ""
+	}
+	s, _ := v.(string)
+	return s
+}
+
+// doGET makes a GET request with the given Authorization header (empty = no header),
+// sets Accept: application/json, and returns body bytes, HTTP status code, and any error.
+func doGET(url, authHeader string) ([]byte, int, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, 0, fmt.Errorf("doGET: create request: %w", err)
+	}
+	if authHeader != "" {
+		req.Header.Set("Authorization", authHeader)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("doGET: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("doGET: read body: %w", err)
+	}
+	return body, resp.StatusCode, nil
+}
