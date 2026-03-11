@@ -48,6 +48,9 @@ Assign a hotkey to any folder. Press it and whatever you have selected (or in yo
 ### 🔍 Instant Search
 Type to filter across all your clips instantly. Find that thing you copied six weeks ago in under a second.
 
+### 🖼️ Images & Files
+Copy an image — see the thumbnail. Copy a file or folder in Finder — get the full path. MonoClip captures it all.
+
 </td>
 <td width="50%">
 
@@ -59,6 +62,9 @@ Some things you need forever. Pin them. They stay safe even when auto-cleanup ru
 
 ### 🧹 Auto-Cleanup
 Set it and forget it. MonoClip automatically removes old unpinned clips to keep your history lean.
+
+### 🤖 AI-Ready CLI
+`mclip` ships with the app. Use it in your terminal, pipe clips into commands, or give your AI assistant instant access to your clipboard history.
 
 </td>
 </tr>
@@ -80,17 +86,28 @@ Set it and forget it. MonoClip automatically removes old unpinned clips to keep 
 
 <br/>
 
-<!--
-  📸 SCREENSHOT: Replace with GIF/screenshot showing folder shortcut in action
-
-  <img src=".github/assets/demo-folder-shortcut.gif" width="680" alt="Folder shortcut demo"/>
--->
-
-<br/>
-
 ## 📦 Installation
 
-### Option A — Build from Source *(recommended for now)*
+### Option A — Homebrew *(recommended)*
+
+```bash
+brew tap nokhodian/tap
+brew install --cask mono-clip
+```
+
+That's it. Homebrew handles everything — download, verify checksum, install the `.app`.
+
+### Option B — Direct Download
+
+Grab the latest `.dmg` from the [Releases page](https://github.com/nokhodian/mono-clip/releases):
+
+1. Download `MonoClip_0.2.0_aarch64.dmg`
+2. Open the `.dmg` and drag **MonoClip.app** to `/Applications`
+3. Launch from Spotlight or `/Applications`
+
+> **Apple Silicon only** — the current release targets `aarch64`. Intel builds coming soon.
+
+### Option C — Build from Source
 
 **Prerequisites:**
 
@@ -101,47 +118,16 @@ Set it and forget it. MonoClip automatically removes old unpinned clips to keep 
 | pnpm | latest | `npm i -g pnpm` |
 | Xcode CLT | latest | `xcode-select --install` |
 
-**Steps:**
-
 ```bash
-# 1. Clone the repo
 git clone https://github.com/nokhodian/mono-clip.git
 cd mono-clip
-
-# 2. Install frontend dependencies
 pnpm install
-
-# 3. Install Tauri CLI
-cargo install tauri-cli --version "^2"
-
-# 4. Run in development mode
-cargo tauri dev
-
-# — OR — build a release .app
-cargo tauri build
-# → find your app at: src-tauri/target/release/bundle/macos/MonoClip.app
+cargo tauri dev           # dev mode
+# — OR —
+cargo tauri build         # → src-tauri/target/release/bundle/macos/MonoClip.app
 ```
 
-> 💡 The first build takes a few minutes while Rust compiles all dependencies. Subsequent builds are much faster.
-
-### Option B — Homebrew *(recommended)*
-
-```bash
-brew tap nokhodian/tap
-brew install --cask mono-clip
-```
-
-That's it. Homebrew handles everything — download, verify checksum, install the `.app`.
-
-### Option C — Direct Download
-
-Grab the latest `.dmg` from the [Releases page](https://github.com/nokhodian/mono-clip/releases/tag/v0.1.0):
-
-1. Download `MonoClip_0.1.0_aarch64.dmg`
-2. Open the `.dmg` and drag **MonoClip.app** to `/Applications`
-3. Launch from Spotlight or `/Applications`
-
-> **Apple Silicon only** — the current release targets `aarch64`. Intel builds coming soon.
+> 💡 The first build takes a few minutes while Rust compiles all dependencies.
 
 <br/>
 
@@ -174,20 +160,84 @@ Now, whenever you have text **selected** in any app (or just something in your c
 
 <br/>
 
+## 🖥️ mclip — Terminal CLI
+
+`mclip` installs automatically with the app. Set it up once:
+
+```bash
+# In Settings → Install mclip CLI
+# Then add to your shell profile:
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Then use it anywhere:
+
+```bash
+mclip list                          # recent inbox items
+mclip list --folder Work            # specific folder
+mclip list --search http            # search across clips
+mclip add "text"                    # add a clip
+mclip add "text" --folder Work      # add to a folder
+mclip get <id>                      # print raw content
+mclip get <id> | pbcopy             # pipe back to clipboard
+mclip remove <id>                   # delete a clip
+mclip pin <id>                      # pin a clip
+mclip folder list                   # list all folders
+mclip folder add "Name"             # create a folder
+mclip folder remove "Name"          # delete a folder
+```
+
+<br/>
+
+## 🤖 Use with AI
+
+MonoClip gives your AI coding assistant full access to your clipboard history.
+
+### Copy context (works with any AI)
+
+Open **Help → Use with AI** in the app and click **Copy AI Context**. Paste it into any chat window — Claude, Cursor, ChatGPT — or save it to `CLAUDE.md` / `.cursorrules`. The AI will then understand all `mclip` commands and can manage your clipboard on your behalf.
+
+```bash
+# Or from the terminal:
+mclip context
+```
+
+### MCP server (Claude Desktop, Cursor, Windsurf)
+
+`mclip mcp` starts a JSON-RPC stdio server that exposes your clipboard as native AI tools — no copy-paste needed.
+
+Add this to `~/.config/claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "mclip": {
+      "command": "mclip",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Available tools: `list_clips`, `add_clip`, `get_clip`, `remove_clip`, `pin_clip`, `list_folders`, `create_folder`, `delete_folder`.
+
+<br/>
+
 ## 🏗️ Tech Stack
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    MonoClip v0.1                    │
+│                   MonoClip v0.2                     │
 ├───────────────────┬─────────────────────────────────┤
 │  Frontend         │  Svelte 5 (runes) + Vite        │
 │  Styling          │  Tailwind CSS 3                  │
 │  App Framework    │  Tauri 2                         │
-│  Backend          │  Rust 1.88                       │
+│  Backend          │  Rust                            │
 │  Database         │  SQLite (rusqlite, WAL mode)     │
 │  Clipboard        │  tauri-plugin-clipboard-manager  │
 │  Shortcuts        │  tauri-plugin-global-shortcut    │
 │  Autostart        │  tauri-plugin-autostart          │
+│  CLI              │  clap + rusqlite (standalone)    │
 └───────────────────┴─────────────────────────────────┘
 ```
 
@@ -215,7 +265,8 @@ mono-clip/
 │   │   │   ├── ClipCard.svelte
 │   │   │   ├── Sidebar.svelte
 │   │   │   ├── SearchBar.svelte
-│   │   │   ├── ShortcutRecorder.svelte
+│   │   │   ├── HelpPanel.svelte
+│   │   │   ├── SettingsPanel.svelte
 │   │   │   └── ...
 │   │   └── stores/               # Svelte 5 rune-based state
 │   └── app.css                   # Tailwind + CSS vars
@@ -228,7 +279,8 @@ mono-clip/
         ├── commands/             # Tauri IPC commands
         ├── shortcuts/            # Global shortcut manager
         ├── tray/                 # Menu bar tray
-        └── window/               # Window positioning
+        ├── window/               # Window positioning
+        └── bin/mclip.rs          # Standalone CLI binary
 ```
 
 <br/>
@@ -253,11 +305,13 @@ Both are requested via standard macOS system dialogs on first use.
 ## 🛣️ Roadmap
 
 - [ ] Rich text + HTML clip support
-- [ ] Image clipboard support
 - [ ] iCloud sync (opt-in)
 - [ ] Clip templates / snippets with variables
 - [ ] Multiple window themes
 - [ ] Plugin system
+- [x] Image clipboard capture with thumbnails
+- [x] File & folder path capture
+- [x] mclip CLI with AI context + MCP server
 - [x] Multi-folder organization
 - [x] Global shortcut routing
 - [x] Selected text capture
