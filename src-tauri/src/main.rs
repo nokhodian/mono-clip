@@ -43,6 +43,9 @@ fn main() {
             // Start clipboard watcher
             watcher::start_watcher(handle.clone());
 
+            // Install mclip CLI tool into ~/.local/bin/ if bundled binary is present
+            utility::auto_install_cli(&handle);
+
             // Run auto-cleanup on startup
             {
                 let state = app.state::<AppState>();
@@ -87,6 +90,7 @@ fn main() {
             utility::show_main_window,
             utility::hide_main_window,
             utility::toggle_main_window,
+            utility::install_cli,
         ])
         .run(tauri::generate_context!())
         .expect("error while running MonoClip")

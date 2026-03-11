@@ -1,6 +1,6 @@
 <script lang="ts">
   import { settingsStore } from "$lib/stores/settings.svelte";
-  import { runAutoCleanup } from "$lib/api/tauri";
+  import { runAutoCleanup, installCli } from "$lib/api/tauri";
 
   interface Props {
     open?: boolean;
@@ -9,11 +9,22 @@
   let { open = $bindable(false), onclose }: Props = $props();
 
   let cleanupResult = $state<number | null>(null);
+  let cliResult = $state<{ ok: boolean; msg: string } | null>(null);
 
   async function handleCleanup() {
     const count = await runAutoCleanup();
     cleanupResult = count;
     setTimeout(() => { cleanupResult = null; }, 3000);
+  }
+
+  async function handleInstallCli() {
+    try {
+      const path = await installCli();
+      cliResult = { ok: true, msg: `Installed → ${path}` };
+    } catch (e) {
+      cliResult = { ok: false, msg: String(e) };
+    }
+    setTimeout(() => { cliResult = null; }, 5000);
   }
 </script>
 
@@ -143,6 +154,31 @@
               {cleanupResult !== null ? `Removed ${cleanupResult} clips` : "Clean Now"}
             </button>
           </div>
+        </section>
+
+        <!-- CLI Tools -->
+        <section class="mb-5">
+          <h3 class="text-xs font-medium text-white/40 uppercase tracking-wider mb-3">CLI Tools</h3>
+          <p class="text-xs text-white/40 mb-3">
+            Install <code class="font-mono text-white/60">mclip</code> to
+            <code class="font-mono text-white/60">~/.local/bin/</code> for terminal access.
+          </p>
+          <button
+            class="w-full py-2 rounded-lg text-sm border border-white/10 transition-colors
+                   {cliResult?.ok === false
+                     ? 'text-red-400 border-red-500/30'
+                     : cliResult?.ok === true
+                       ? 'text-green-400 border-green-500/30'
+                       : 'text-white/70 hover:bg-white/5'}"
+            onclick={handleInstallCli}
+          >
+            {cliResult ? cliResult.msg : "Install mclip CLI"}
+          </button>
+          {#if cliResult?.ok}
+            <p class="text-xs text-white/30 mt-1.5">
+              Make sure <code class="font-mono">~/.local/bin</code> is in your <code class="font-mono">$PATH</code>.
+            </p>
+          {/if}
         </section>
 
         <!-- Shortcuts -->
