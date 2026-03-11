@@ -65,11 +65,14 @@
       }
     });
 
-    // Hide window when it loses focus (macOS behavior)
+    // Hide window when it loses focus; reload clips when it gains focus
     const { getCurrentWindow } = await import("@tauri-apps/api/window");
     const win = getCurrentWindow();
     win.onFocusChanged(({ payload: focused }) => {
-      if (!focused && !showSettings) {
+      if (focused) {
+        // Reload to surface any clips captured while the window was hidden
+        clipsStore.load(foldersStore.activeId ?? 1);
+      } else if (!showSettings) {
         // Small delay to allow click actions to complete
         setTimeout(() => hideMainWindow(), 200);
       }

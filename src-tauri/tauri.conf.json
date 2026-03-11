@@ -15,7 +15,11 @@
       "iconAsTemplate": true
     },
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$HOME/.monoclip/images/**"]
+      }
     },
     "macOSPrivateApi": true,
     "windows": [
