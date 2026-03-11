@@ -149,6 +149,7 @@ func (m *Manager) Test(ctx context.Context, id string) error {
 		if ok {
 			conn.Label = fmt.Sprintf("%s – %s", p.Name, accountID)
 		}
+		_ = m.store.Save(ctx, conn)
 	}
 
 	if err := m.store.MarkTested(ctx, id, "active"); err != nil {
@@ -249,7 +250,7 @@ func (m *Manager) connectOAuth(ctx context.Context, p PlatformDef, conn *Connect
 	cfg := *p.OAuth // copy
 
 	// Look up env vars MONOES_{UPPERCASE_PLATFORM}_CLIENT_ID and _CLIENT_SECRET
-	envPrefix := "MONOES_" + strings.ToUpper(p.ID) + "_"
+	envPrefix := "MONOES_" + strings.ToUpper(strings.ReplaceAll(p.ID, "-", "_")) + "_"
 	if cfg.ClientID == "" {
 		cfg.ClientID = os.Getenv(envPrefix + "CLIENT_ID")
 	}
@@ -326,7 +327,9 @@ func (m *Manager) connectFields(p PlatformDef, method AuthMethod, conn *Connecti
 			return fmt.Errorf("connectFields: required field %q is empty", field.Key)
 		}
 
-		conn.Data[field.Key] = value
+		if value != "" {
+			conn.Data[field.Key] = value
+		}
 	}
 
 	return nil
@@ -334,20 +337,12 @@ func (m *Manager) connectFields(p PlatformDef, method AuthMethod, conn *Connecti
 
 // readSecret reads a secret value from the terminal with echo disabled.
 func readSecret(r *bufio.Reader) string {
-	// Run stty -echo on /dev/tty
-	echoOff := exec.Command("stty", "-echo")
-	echoOff.Stdin, _ = os.Open("/dev/tty")
-	_ = echoOff.Run()
-
+	if err := exec.Command("stty", "-echo").Run(); err == nil {
+		defer func() {
+			_ = exec.Command("stty", "echo").Run()
+			fmt.Println()
+		}()
+	}
 	line, _ := r.ReadString('\n')
-
-	// Run stty echo on /dev/tty
-	echoOn := exec.Command("stty", "echo")
-	echoOn.Stdin, _ = os.Open("/dev/tty")
-	_ = echoOn.Run()
-
-	// Print newline since echo was off
-	fmt.Println()
-
 	return strings.TrimSpace(line)
 }
