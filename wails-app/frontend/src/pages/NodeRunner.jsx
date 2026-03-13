@@ -505,6 +505,13 @@ const CREDENTIAL_PLATFORMS = {
   'db.redis': 'redis',
 }
 
+// ── Field visibility check (depends_on support) ───────────────────────────────
+function fieldIsVisible(field, config) {
+  if (!field.depends_on) return true
+  const depValue = String(config?.[field.depends_on.key] ?? config?.[field.depends_on.field] ?? '')
+  return (field.depends_on.values || []).includes(depValue)
+}
+
 // ── Inspector panel (right side) ──────────────────────────────────────────────
 function Inspector({ node, onConfigChange, onClose, onNavigate }) {
   const [copied, setCopied] = useState(false)
@@ -593,45 +600,129 @@ function Inspector({ node, onConfigChange, onClose, onNavigate }) {
         )}
 
         {/* Config fields */}
-        {node.configFields?.length > 0 ? (
-          <>
-            <Label>CONFIG</Label>
-            {node.configFields.map(f => (
-              <div key={f.key} style={{ marginBottom: 10 }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-muted)', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 }}>
-                  {f.label}
-                </div>
-                {f.type === 'textarea' ? (
-                  <textarea
-                    value={node.config?.[f.key] ?? f.default ?? ''}
-                    onChange={e => onConfigChange(node.id, f.key, e.target.value)}
-                    rows={4}
-                    style={inputStyle}
-                  />
-                ) : f.type === 'select' ? (
-                  <select
-                    value={node.config?.[f.key] ?? f.default ?? ''}
-                    onChange={e => onConfigChange(node.id, f.key, e.target.value)}
-                    style={inputStyle}
-                  >
-                    {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                ) : (
-                  <input
-                    type={f.type || 'text'}
-                    value={node.config?.[f.key] ?? f.default ?? ''}
-                    onChange={e => onConfigChange(node.id, f.key, e.target.value)}
-                    style={inputStyle}
-                  />
-                )}
+        {(() => {
+          const fields = node.schema?.fields || node.configFields || []
+          if (fields.length === 0) {
+            return (
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>
+                No config fields — this node runs with defaults.
               </div>
-            ))}
-          </>
-        ) : (
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>
-            No config fields — this node runs with defaults.
-          </div>
-        )}
+            )
+          }
+          return (
+            <>
+              <Label>CONFIG</Label>
+              {fields.map(f => {
+                if (!fieldIsVisible(f, node.config)) return null
+                const val = node.config?.[f.key] ?? f.default ?? ''
+                const onChange = e => onConfigChange(node.id, f.key, e.target.value)
+                let inputEl
+                if (f.type === 'boolean') {
+                  const checked = Boolean(node.config?.[f.key] ?? f.default ?? false)
+                  inputEl = (
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={e => onConfigChange(node.id, f.key, e.target.checked)}
+                      style={{ accentColor: '#00b4d8', width: 14, height: 14 }}
+                    />
+                  )
+                } else if (f.type === 'textarea') {
+                  inputEl = (
+                    <textarea
+                      value={val}
+                      onChange={onChange}
+                      rows={f.rows || 3}
+                      style={inputStyle}
+                    />
+                  )
+                } else if (f.type === 'code') {
+                  inputEl = (
+                    <textarea
+                      value={val}
+                      onChange={onChange}
+                      rows={f.rows || 5}
+                      className="field-code"
+                      style={{ ...inputStyle, fontFamily: 'var(--font-mono)', fontSize: 11 }}
+                    />
+                  )
+                } else if (f.type === 'select') {
+                  inputEl = (
+                    <select
+                      value={val}
+                      onChange={onChange}
+                      style={inputStyle}
+                    >
+                      {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  )
+                } else if (f.type === 'number') {
+                  inputEl = (
+                    <input
+                      type="number"
+                      min={f.min}
+                      max={f.max}
+                      value={val}
+                      onChange={onChange}
+                      style={inputStyle}
+                    />
+                  )
+                } else if (f.type === 'password') {
+                  inputEl = (
+                    <input
+                      type="password"
+                      value={val}
+                      onChange={onChange}
+                      style={inputStyle}
+                    />
+                  )
+                } else if (f.type === 'array') {
+                  const arrVal = Array.isArray(node.config?.[f.key])
+                    ? node.config[f.key].join(', ')
+                    : (val || '')
+                  inputEl = (
+                    <input
+                      type="text"
+                      value={arrVal}
+                      onChange={e => onConfigChange(node.id, f.key, e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                      placeholder="comma-separated values"
+                      style={inputStyle}
+                    />
+                  )
+                } else if (f.type === 'resource_picker') {
+                  inputEl = (
+                    <input
+                      type="text"
+                      value={val}
+                      onChange={onChange}
+                      placeholder="(resource picker - coming soon)"
+                      style={{ ...inputStyle, color: 'var(--text-muted)' }}
+                    />
+                  )
+                } else {
+                  // 'text' and any unknown types
+                  inputEl = (
+                    <input
+                      type="text"
+                      value={val}
+                      onChange={onChange}
+                      style={inputStyle}
+                    />
+                  )
+                }
+                return (
+                  <div key={f.key} style={{ marginBottom: 10 }}>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-muted)', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 }}>
+                      {f.label}{f.required ? ' *' : ''}
+                    </div>
+                    {inputEl}
+                    {f.help && <p className="field-help">{f.help}</p>}
+                  </div>
+                )
+              })}
+            </>
+          )
+        })()}
 
         {/* Output results */}
         {node.runStatus && (

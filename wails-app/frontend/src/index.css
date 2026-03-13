@@ -1501,3 +1501,16 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .mb-4 { margin-bottom: 16px; }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .w-full { width: 100%; }
+
+/* ── Inspector field helpers ── */
+.field-help {
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  margin-top: 2px;
+  margin-bottom: 0;
+}
+
+.field-code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
