@@ -2,7 +2,7 @@
   "credential_platform": null,
   "fields": [
     { "key": "field", "label": "Field to Switch On", "type": "text", "required": true, "placeholder": "{{ $json.status }}", "help": "Value expression to match against cases." },
-    { "key": "cases", "label": "Cases (comma-separated)", "type": "text", "required": true, "placeholder": "active,inactive,pending", "help": "Comma-separated values. Each becomes an output handle." },
+    { "key": "cases", "label": "Cases", "type": "array", "item_type": "text", "required": true, "help": "Each value becomes an output handle. Type a value and press Enter." },
     { "key": "fallthrough", "label": "Fallthrough to 'default'", "type": "boolean", "required": false, "default": true }
   ]
 }

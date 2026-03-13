@@ -2,7 +2,7 @@
   "credential_platform": null,
   "fields": [
     { "key": "operation", "label": "Operation", "type": "select", "required": true, "options": ["count", "sum", "avg", "min", "max", "collect"], "default": "count" },
-    { "key": "field", "label": "Field Name", "type": "text", "required": false, "placeholder": "amount", "help": "Field to aggregate. Not needed for 'count' or 'collect'.", "depends_on": { "field": "operation", "values": ["sum", "avg", "min", "max"] } },
+    { "key": "field", "label": "Field Name", "type": "text", "required": false, "placeholder": "amount", "help": "Field to aggregate. Not needed for 'count' or 'collect'.", "depends_on": { "key": "operation", "values": ["sum", "avg", "min", "max"] } },
     { "key": "group_by", "label": "Group By Field", "type": "text", "required": false, "placeholder": "category", "help": "Optional: group results by this field." }
   ]
 }

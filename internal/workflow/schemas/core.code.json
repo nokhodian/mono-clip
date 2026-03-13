@@ -2,6 +2,6 @@
   "credential_platform": null,
   "fields": [
     { "key": "language", "label": "Language", "type": "select", "required": true, "options": ["javascript", "python"], "default": "javascript" },
-    { "key": "code", "label": "Code", "type": "code", "language": "javascript", "required": true, "help": "Return an array of objects. Each object becomes an output item. Access input via $input.all()." }
+    { "key": "code", "label": "Code", "type": "code", "required": true, "help": "Return an array of objects. Each object becomes an output item. Access input via $input.all()." }
   ]
 }

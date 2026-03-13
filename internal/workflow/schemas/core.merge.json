@@ -2,6 +2,6 @@
   "credential_platform": null,
   "fields": [
     { "key": "mode", "label": "Merge Mode", "type": "select", "required": true, "options": ["append", "merge_by_key", "zip"], "default": "append" },
-    { "key": "key_field", "label": "Key Field", "type": "text", "required": false, "placeholder": "id", "depends_on": { "field": "mode", "values": ["merge_by_key"] } }
+    { "key": "key_field", "label": "Key Field", "type": "text", "required": false, "placeholder": "id", "depends_on": { "key": "mode", "values": ["merge_by_key"] } }
   ]
 }
