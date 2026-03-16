@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import {
   ArrowLeft, ExternalLink, CheckCircle, Globe, Mail,
   Users, FileText, Heart, MessageSquare, Send, Eye,
-  UserPlus, UserMinus, Search, RefreshCw, Zap
+  UserPlus, UserMinus, Search, RefreshCw, Zap,
+  MessageCircle, ChevronDown, ChevronRight
 } from 'lucide-react'
 import { api, PLATFORM_COLORS, STATE_COLORS } from '../services/api.js'
 
@@ -115,7 +116,142 @@ function Avatar({ username, imageUrl, size = 72 }) {
   )
 }
 
-export default function Profile({ id, onBack, onOpenURL }) {
+function PostsSection({ personId, onOpenPost, onOpenURL }) {
+  const [posts, setPosts]       = useState([])
+  const [open, setOpen]         = useState(false)
+  const [loading, setLoading]   = useState(true)
+
+  useEffect(() => {
+    api.getPersonPosts(personId).then(data => {
+      const rows = data || []
+      setPosts(rows)
+      setOpen(rows.length > 0)
+      setLoading(false)
+    })
+  }, [personId])
+
+  return (
+    <div className="profile-section">
+      {/* Header row — always visible */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          background: 'none', border: 'none', cursor: 'pointer',
+          width: '100%', padding: 0, textAlign: 'left',
+        }}
+      >
+        {open
+          ? <ChevronDown size={13} style={{ color: 'var(--text-muted)' }} />
+          : <ChevronRight size={13} style={{ color: 'var(--text-muted)' }} />
+        }
+        <span className="profile-section-title" style={{ margin: 0 }}>
+          Posts
+          <span style={{ color: 'var(--text-muted)', fontWeight: 400, marginLeft: 8, fontSize: 11 }}>
+            {loading ? '…' : posts.length}
+          </span>
+        </span>
+      </button>
+
+      {/* Collapsible body */}
+      {open && (
+        <div style={{ marginTop: 10 }}>
+          {loading ? (
+            <div style={{ padding: '12px 0', textAlign: 'center' }}>
+              <div className="spinner" style={{ width: 14, height: 14, margin: '0 auto' }} />
+            </div>
+          ) : posts.length === 0 ? (
+            <div style={{
+              padding: '16px 0', textAlign: 'center',
+              color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 11,
+            }}>
+              No posts scraped yet — run list_user_posts to populate
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {posts.map(post => (
+                <div key={post.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '6px 8px', borderRadius: 6,
+                  background: 'var(--elevated)',
+                  border: '1px solid var(--border)',
+                }}>
+                  {/* Shortcode link → PostDetail */}
+                  <button
+                    onClick={() => onOpenPost(post.id)}
+                    style={{
+                      fontFamily: 'var(--font-mono)', fontSize: 11,
+                      color: 'var(--cyan)', background: 'none', border: 'none',
+                      cursor: 'pointer', padding: 0, flexShrink: 0,
+                    }}
+                  >
+                    {post.shortcode}
+                  </button>
+
+                  {/* External link */}
+                  <button
+                    onClick={() => onOpenURL(post.url)}
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      color: 'var(--text-muted)', padding: 0, display: 'flex',
+                      opacity: 0.5, flexShrink: 0,
+                    }}
+                  >
+                    <ExternalLink size={10} />
+                  </button>
+
+                  {/* Stats */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 4 }}>
+                    <span style={{
+                      display: 'flex', alignItems: 'center', gap: 3,
+                      fontFamily: 'var(--font-mono)', fontSize: 10,
+                      color: 'var(--text-muted)',
+                    }}>
+                      <Heart size={10} /> {post.like_count ?? '—'}
+                    </span>
+                    <span style={{
+                      display: 'flex', alignItems: 'center', gap: 3,
+                      fontFamily: 'var(--font-mono)', fontSize: 10,
+                      color: 'var(--text-muted)',
+                    }}>
+                      <MessageCircle size={10} /> {post.comment_count ?? '—'}
+                    </span>
+                  </div>
+
+                  {/* We interacted badges */}
+                  {post.we_liked && (
+                    <span style={{
+                      padding: '1px 6px', borderRadius: 4,
+                      background: 'rgba(0,180,216,0.12)',
+                      border: '1px solid rgba(0,180,216,0.3)',
+                      color: '#00b4d8', fontSize: 9,
+                      fontFamily: 'var(--font-mono)',
+                    }}>
+                      ♥ liked
+                    </span>
+                  )}
+                  {post.we_commented && (
+                    <span style={{
+                      padding: '1px 6px', borderRadius: 4,
+                      background: 'rgba(124,58,237,0.12)',
+                      border: '1px solid rgba(124,58,237,0.3)',
+                      color: '#a855f7', fontSize: 9,
+                      fontFamily: 'var(--font-mono)',
+                    }}>
+                      💬 commented
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function Profile({ id, onBack, onOpenURL, onOpenPost }) {
   const [person, setPerson] = useState(null)
   const [interactions, setInteractions] = useState([])
   const [loading, setLoading] = useState(true)
@@ -155,7 +291,7 @@ export default function Profile({ id, onBack, onOpenURL }) {
   }
 
   const platformColor = PLATFORM_COLORS[person.platform?.toUpperCase()] || 'var(--cyan)'
-  const profileUrl = PLATFORM_PROFILE_URL[person.platform?.toUpperCase()]?.(person.username)
+  const profileUrl = person.profile_url || PLATFORM_PROFILE_URL[person.platform?.toUpperCase()]?.(person.username)
 
   const actionTypes = [...new Set(interactions.map(i => i.action_type).filter(Boolean))]
   const filtered = filterType ? interactions.filter(i => i.action_type === filterType) : interactions
@@ -175,7 +311,13 @@ export default function Profile({ id, onBack, onOpenURL }) {
             <ArrowLeft size={13} /> People
           </button>
           <div className="page-subtitle" style={{ margin: '0 4px', color: 'var(--text-dim)' }}>/</div>
-          <div className="page-subtitle">@{person.username}</div>
+          {profileUrl ? (
+            <button className="page-subtitle btn btn-ghost btn-sm" style={{ padding: '0 4px' }} onClick={() => onOpenURL(profileUrl)}>
+              @{person.username} <ExternalLink size={11} style={{ opacity: 0.5 }} />
+            </button>
+          ) : (
+            <div className="page-subtitle">@{person.username}</div>
+          )}
         </div>
         <div className="page-header-right">
           <button className="btn btn-ghost btn-sm" onClick={load} style={{ gap: 5 }}>
@@ -211,7 +353,13 @@ export default function Profile({ id, onBack, onOpenURL }) {
                   {person.platform}
                 </span>
               </div>
-              <div className="profile-username">@{person.username}</div>
+              {profileUrl ? (
+                <button className="profile-username profile-username-link" onClick={() => onOpenURL(profileUrl)}>
+                  @{person.username}
+                </button>
+              ) : (
+                <div className="profile-username">@{person.username}</div>
+              )}
               {(person.job_title || person.category) && (
                 <div className="profile-role">{person.job_title || person.category}</div>
               )}
@@ -267,6 +415,13 @@ export default function Profile({ id, onBack, onOpenURL }) {
             })}
           </div>
         )}
+
+        {/* ── Posts section ── */}
+        <PostsSection
+          personId={id}
+          onOpenPost={onOpenPost}
+          onOpenURL={onOpenURL}
+        />
 
         {/* ── Interaction history ── */}
         <div className="profile-section">
