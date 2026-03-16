@@ -556,6 +556,44 @@ type PersonInteraction struct {
 	CreatedAt        string `json:"created_at"`
 }
 
+// PostSummary is returned by GetPersonPosts.
+type PostSummary struct {
+	ID           string `json:"id"`
+	Shortcode    string `json:"shortcode"`
+	URL          string `json:"url"`
+	ThumbnailURL string `json:"thumbnail_url"`
+	LikeCount    int    `json:"like_count"`
+	CommentCount int    `json:"comment_count"`
+	Caption      string `json:"caption"`
+	PostedAt     string `json:"posted_at"`
+	ScrapedAt    string `json:"scraped_at"`
+	WeLiked      bool   `json:"we_liked"`
+	WeCommented  bool   `json:"we_commented"`
+}
+
+// PostDetail is returned by GetPostDetail.
+type PostDetail struct {
+	ID           string `json:"id"`
+	Shortcode    string `json:"shortcode"`
+	URL          string `json:"url"`
+	ThumbnailURL string `json:"thumbnail_url"`
+	LikeCount    int    `json:"like_count"`
+	CommentCount int    `json:"comment_count"`
+	Caption      string `json:"caption"`
+	PostedAt     string `json:"posted_at"`
+	ScrapedAt    string `json:"scraped_at"`
+}
+
+// PostComment is returned by GetPostComments.
+type PostComment struct {
+	ID         string `json:"id"`
+	Author     string `json:"author"`
+	Text       string `json:"text"`
+	Timestamp  string `json:"timestamp"`
+	LikesCount int    `json:"likes_count"`
+	ReplyCount int    `json:"reply_count"`
+}
+
 func (a *App) GetPeople(platform, search string, limit, offset int) []PersonInfo {
 	if a.db == nil {
 		return nil
@@ -672,6 +710,138 @@ func (a *App) GetPersonInteractions(id string) []PersonInteraction {
 		}
 	}
 	return interactions
+}
+
+// GetPersonPosts returns all scraped posts for a person, with we_liked/we_commented flags.
+func (a *App) GetPersonPosts(personID string) []PostSummary {
+	if a.db == nil {
+		return []PostSummary{}
+	}
+	rows, err := a.db.Query(`
+		SELECT
+			p.id,
+			p.shortcode,
+			p.url,
+			COALESCE(p.thumbnail_url, ''),
+			COALESCE(p.like_count, 0),
+			COALESCE(p.comment_count, 0),
+			COALESCE(p.caption, ''),
+			COALESCE(p.posted_at, ''),
+			p.scraped_at,
+			EXISTS(
+				SELECT 1 FROM action_targets at2
+				JOIN actions a2 ON at2.action_id = a2.id
+				WHERE rtrim(at2.link, '/') = rtrim(p.url, '/')
+				  AND a2.type = 'like_posts'
+				  AND at2.status = 'COMPLETED'
+			) AS we_liked,
+			EXISTS(
+				SELECT 1 FROM action_targets at3
+				JOIN actions a3 ON at3.action_id = a3.id
+				WHERE rtrim(at3.link, '/') = rtrim(p.url, '/')
+				  AND a3.type = 'comment_on_posts'
+				  AND at3.status = 'COMPLETED'
+			) AS we_commented
+		FROM posts p
+		WHERE p.person_id = ?
+		ORDER BY p.scraped_at DESC`,
+		personID,
+	)
+	if err != nil {
+		return []PostSummary{}
+	}
+	defer rows.Close()
+
+	var posts []PostSummary
+	for rows.Next() {
+		var p PostSummary
+		var weLiked, weCommented int
+		if err := rows.Scan(
+			&p.ID, &p.Shortcode, &p.URL, &p.ThumbnailURL,
+			&p.LikeCount, &p.CommentCount, &p.Caption,
+			&p.PostedAt, &p.ScrapedAt,
+			&weLiked, &weCommented,
+		); err != nil {
+			continue
+		}
+		p.WeLiked = weLiked != 0
+		p.WeCommented = weCommented != 0
+		posts = append(posts, p)
+	}
+	if err := rows.Err(); err != nil {
+		return []PostSummary{}
+	}
+	if posts == nil {
+		return []PostSummary{}
+	}
+	return posts
+}
+
+// GetPostDetail returns full metadata for a single post by ID.
+func (a *App) GetPostDetail(postID string) *PostDetail {
+	if a.db == nil {
+		return nil
+	}
+	var p PostDetail
+	err := a.db.QueryRow(`
+		SELECT id, shortcode, url,
+		       COALESCE(thumbnail_url, ''),
+		       COALESCE(like_count, 0),
+		       COALESCE(comment_count, 0),
+		       COALESCE(caption, ''),
+		       COALESCE(posted_at, ''),
+		       scraped_at
+		FROM posts WHERE id = ?`,
+		postID,
+	).Scan(
+		&p.ID, &p.Shortcode, &p.URL, &p.ThumbnailURL,
+		&p.LikeCount, &p.CommentCount, &p.Caption,
+		&p.PostedAt, &p.ScrapedAt,
+	)
+	if err != nil {
+		return nil
+	}
+	return &p
+}
+
+// GetPostComments returns all scraped comments for a post, ordered by timestamp.
+func (a *App) GetPostComments(postID string) []PostComment {
+	if a.db == nil {
+		return []PostComment{}
+	}
+	rows, err := a.db.Query(`
+		SELECT id, COALESCE(author, ''), COALESCE(text, ''),
+		       COALESCE(timestamp, ''),
+		       COALESCE(likes_count, 0),
+		       COALESCE(reply_count, 0)
+		FROM post_comments
+		WHERE post_id = ?
+		ORDER BY timestamp ASC`,
+		postID,
+	)
+	if err != nil {
+		return []PostComment{}
+	}
+	defer rows.Close()
+
+	var comments []PostComment
+	for rows.Next() {
+		var c PostComment
+		if err := rows.Scan(
+			&c.ID, &c.Author, &c.Text,
+			&c.Timestamp, &c.LikesCount, &c.ReplyCount,
+		); err != nil {
+			continue
+		}
+		comments = append(comments, c)
+	}
+	if err := rows.Err(); err != nil {
+		return []PostComment{}
+	}
+	if comments == nil {
+		return []PostComment{}
+	}
+	return comments
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
