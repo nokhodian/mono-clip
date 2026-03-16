@@ -41,6 +41,11 @@ export default function App() {
     setActivePage('profile')
   }, [])
 
+  const navigate = useCallback((page) => {
+    if (page !== 'postDetail') setPostId(null)
+    setActivePage(page)
+  }, [])
+
   // Initial data load
   useEffect(() => {
     const checkDB = async () => {
@@ -102,7 +107,7 @@ export default function App() {
     <div className="app-layout">
       <Sidebar
         activePage={activePage}
-        onNavigate={setActivePage}
+        onNavigate={navigate}
         stats={stats}
         dbConnected={dbConnected}
       />

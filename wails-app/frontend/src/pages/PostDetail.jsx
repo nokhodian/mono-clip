@@ -16,7 +16,7 @@ export default function PostDetail({ id, onBack, onOpenURL }) {
       setPost(p)
       setComments(c || [])
       setLoading(false)
-    })
+    }).catch(() => setLoading(false))
   }, [id])
 
   if (loading) {

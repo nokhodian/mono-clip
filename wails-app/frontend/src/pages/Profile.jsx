@@ -125,7 +125,7 @@ function PostsSection({ personId, onOpenPost, onOpenURL }) {
     api.getPersonPosts(personId).then(data => {
       const rows = data || []
       setPosts(rows)
-      setOpen(rows.length > 0)
+      if (rows.length > 0) setOpen(true)
       setLoading(false)
     })
   }, [personId])
