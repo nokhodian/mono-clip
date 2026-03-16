@@ -160,6 +160,31 @@ func (a *App) startup(ctx context.Context) {
 			target_handle  TEXT NOT NULL DEFAULT '',
 			position       INTEGER NOT NULL DEFAULT 0
 		)`,
+		`CREATE TABLE IF NOT EXISTS posts (
+			id            TEXT PRIMARY KEY,
+			person_id     TEXT REFERENCES people(id),
+			platform      TEXT NOT NULL,
+			shortcode     TEXT NOT NULL,
+			url           TEXT NOT NULL,
+			thumbnail_url TEXT,
+			like_count    INTEGER,
+			comment_count INTEGER,
+			caption       TEXT,
+			posted_at     TEXT,
+			scraped_at    TEXT NOT NULL,
+			UNIQUE(platform, shortcode)
+		)`,
+		`CREATE TABLE IF NOT EXISTS post_comments (
+			id          TEXT PRIMARY KEY,
+			post_id     TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+			author      TEXT NOT NULL,
+			text        TEXT,
+			timestamp   TEXT,
+			likes_count INTEGER DEFAULT 0,
+			reply_count INTEGER DEFAULT 0,
+			scraped_at  TEXT NOT NULL,
+			UNIQUE(post_id, author, timestamp)
+		)`,
 	}
 	for _, q := range safeMigrations {
 		_, _ = db.Exec(q)
@@ -536,7 +561,7 @@ func (a *App) GetPeople(platform, search string, limit, offset int) []PersonInfo
 		return nil
 	}
 	query := `SELECT id, platform_username, platform, COALESCE(full_name,''), COALESCE(image_url,''),
-	                 COALESCE(profile_url,''), COALESCE(follower_count,''), following_count, is_verified,
+	                 COALESCE(profile_url,''), COALESCE(follower_count,''), COALESCE(following_count,0), COALESCE(is_verified,0),
 	                 COALESCE(job_title,''), COALESCE(category,''), COALESCE(created_at,'')
 	          FROM people WHERE 1=1`
 	var args []interface{}
@@ -599,7 +624,7 @@ func (a *App) GetPersonDetail(id string) *PersonDetailInfo {
 	row := a.db.QueryRow(`
 		SELECT id, platform_username, platform,
 		       COALESCE(full_name,''), COALESCE(image_url,''), COALESCE(profile_url,''),
-		       COALESCE(follower_count,''), following_count, content_count, is_verified,
+		       COALESCE(follower_count,''), COALESCE(following_count,0), COALESCE(content_count,0), COALESCE(is_verified,0),
 		       COALESCE(job_title,''), COALESCE(category,''),
 		       COALESCE(introduction,''), COALESCE(website,''), COALESCE(contact_details,''),
 		       COALESCE(created_at,''), COALESCE(updated_at,'')
@@ -1101,14 +1126,15 @@ type SaveWorkflowRequest struct {
 }
 
 type WorkflowExecutionSummary struct {
-	ID          string `json:"id"`
-	WorkflowID  string `json:"workflow_id"`
-	Status      string `json:"status"`
-	TriggerType string `json:"trigger_type"`
-	StartedAt   string `json:"started_at"`
-	FinishedAt  string `json:"finished_at"`
-	Error       string `json:"error"`
-	CreatedAt   string `json:"created_at"`
+	ID           string `json:"id"`
+	WorkflowID   string `json:"workflow_id"`
+	WorkflowName string `json:"workflow_name"`
+	Status       string `json:"status"`
+	TriggerType  string `json:"trigger_type"`
+	StartedAt    string `json:"started_at"`
+	FinishedAt   string `json:"finished_at"`
+	Error        string `json:"error"`
+	CreatedAt    string `json:"created_at"`
 }
 
 type CredentialSummary struct {
@@ -1364,6 +1390,41 @@ func (a *App) GetWorkflowExecutions(workflowID string, limit int) ([]WorkflowExe
 	return execs, rows.Err()
 }
 
+func (a *App) GetRecentExecutions(limit int) ([]WorkflowExecutionSummary, error) {
+	if a.db == nil {
+		return nil, fmt.Errorf("database not available")
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := a.db.Query(`SELECT e.id, e.workflow_id, COALESCE(w.name,'') as workflow_name,
+	                                 e.status, COALESCE(e.trigger_type,''),
+	                                 COALESCE(e.started_at,'') as started_at,
+	                                 COALESCE(e.finished_at,'') as finished_at,
+	                                 COALESCE(e.error_message,'') as error,
+	                                 e.created_at
+	                          FROM workflow_executions e
+	                          LEFT JOIN workflows w ON e.workflow_id = w.id
+	                          ORDER BY e.created_at DESC
+	                          LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var execs []WorkflowExecutionSummary
+	for rows.Next() {
+		var e WorkflowExecutionSummary
+		if rows.Scan(&e.ID, &e.WorkflowID, &e.WorkflowName, &e.Status, &e.TriggerType,
+			&e.StartedAt, &e.FinishedAt, &e.Error, &e.CreatedAt) == nil {
+			execs = append(execs, e)
+		}
+	}
+	if execs == nil {
+		execs = []WorkflowExecutionSummary{}
+	}
+	return execs, rows.Err()
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Credentials
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1577,6 +1638,9 @@ func (a *App) GetWorkflowNodeTypes() map[string]interface{} {
 			mkNode("tiktok.send_dms", "TikTok: Send DMs", "browser", "Send TikTok direct messages"),
 			mkNode("tiktok.auto_reply_dms", "TikTok: Auto Reply DMs", "browser", "Automatically reply to TikTok DMs"),
 			mkNode("tiktok.publish_post", "TikTok: Publish Post", "browser", "Publish a TikTok video"),
+		},
+		"people": []nodeDesc{
+			mkNode("people.save", "Save to People", "people", "Upsert items into the People tab"),
 		},
 	}
 }
@@ -1833,11 +1897,152 @@ func (a *App) runBrowserNode(req NodeRunRequest) NodeRunResult {
 		return NodeRunResult{Error: err.Error(), DurationMs: elapsed}
 	}
 
-	// 6. Convert results to NodeRunOutput.
+	// 6. For profile-scraping actions, auto-save results to the people table.
+	if strings.HasSuffix(actionType, "scrape_profile_info") && a.db != nil && len(result.ExtractedItems) > 0 {
+		_ = a.saveProfilesToPeople(result.ExtractedItems, strings.ToUpper(platform))
+	}
+
+	// 7. Convert results to NodeRunOutput.
 	return NodeRunResult{
 		Outputs:    []NodeRunOutput{{Handle: "main", Items: result.ExtractedItems}},
 		DurationMs: elapsed,
 	}
+}
+
+// saveProfilesToPeople upserts scraped profile items into the people table.
+func (a *App) saveProfilesToPeople(items []map[string]interface{}, defaultPlatform string) error {
+	now := time.Now().UTC()
+	for _, data := range items {
+		platformRaw, _ := data["platform"].(string)
+		if platformRaw == "" {
+			platformRaw = defaultPlatform
+		}
+		platformUpper := strings.ToUpper(platformRaw)
+
+		profileURL := firstStringFromMap(data, "profile_url", "url", "href")
+		username := ""
+		if profileURL != "" {
+			if factory, ok := bot.PlatformRegistry[platformUpper]; ok {
+				username = factory().ExtractUsername(profileURL)
+			}
+			if username == "" {
+				parts := strings.Split(strings.Trim(profileURL, "/"), "/")
+				if len(parts) > 0 {
+					username = strings.TrimPrefix(parts[len(parts)-1], "@")
+				}
+			}
+		}
+		if username == "" {
+			continue
+		}
+
+		fullName, _ := data["full_name"].(string)
+		imageURL, _ := data["image_url"].(string)
+		website, _ := data["website"].(string)
+		introduction, _ := data["introduction"].(string)
+		isVerified, _ := data["is_verified"].(bool)
+		jobTitle := firstStringFromMap(data, "job_title", "position", "headline")
+
+		followerInt := int64ToNullable(parseAbbrevInt(mapStrVal(data, "follower_count", "followers_count")))
+		followingInt := int64ToNullable(parseAbbrevInt(mapStrVal(data, "following_count")))
+		contentInt := int64ToNullable(parseAbbrevInt(mapStrVal(data, "content_count")))
+
+		_, err := a.db.Exec(
+			`INSERT INTO people (id, platform_username, platform, full_name, image_url,
+			        contact_details, website, content_count, follower_count,
+			        following_count, introduction, is_verified, category, job_title,
+			        profile_url, created_at, updated_at)
+			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+			 ON CONFLICT(platform_username, platform)
+			 DO UPDATE SET
+			   full_name       = COALESCE(excluded.full_name,       people.full_name),
+			   image_url       = COALESCE(excluded.image_url,       people.image_url),
+			   profile_url     = COALESCE(excluded.profile_url,     people.profile_url),
+			   website         = COALESCE(excluded.website,         people.website),
+			   content_count   = COALESCE(excluded.content_count,   people.content_count),
+			   follower_count  = COALESCE(excluded.follower_count,  people.follower_count),
+			   following_count = COALESCE(excluded.following_count, people.following_count),
+			   introduction    = COALESCE(excluded.introduction,    people.introduction),
+			   is_verified     = COALESCE(excluded.is_verified,     people.is_verified),
+			   job_title       = COALESCE(excluded.job_title,       people.job_title),
+			   updated_at      = excluded.updated_at`,
+			uuid.New().String(), username, platformUpper,
+			nullStr(fullName), nullStr(imageURL), nil,
+			nullStr(website), contentInt, followerInt, followingInt,
+			nullStr(introduction), isVerified, nil, nullStr(jobTitle),
+			nullStr(profileURL), now, now,
+		)
+		if err != nil {
+			return fmt.Errorf("saveProfilesToPeople %s/%s: %w", platformUpper, username, err)
+		}
+	}
+	return nil
+}
+
+func firstStringFromMap(m map[string]interface{}, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := m[k].(string); ok && v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func mapStrVal(m map[string]interface{}, keys ...string) string {
+	for _, k := range keys {
+		switch v := m[k].(type) {
+		case string:
+			if v != "" {
+				return v
+			}
+		case float64:
+			return fmt.Sprintf("%d", int64(v))
+		case int64:
+			return fmt.Sprintf("%d", v)
+		}
+	}
+	return ""
+}
+
+func parseAbbrevInt(s string) int64 {
+	if s == "" {
+		return 0
+	}
+	// Strip trailing word suffixes like "followers", "posts"
+	parts := strings.Fields(s)
+	if len(parts) == 0 {
+		return 0
+	}
+	s = parts[0]
+	s = strings.ToUpper(strings.TrimSpace(s))
+	multiplier := int64(1)
+	if strings.HasSuffix(s, "K") {
+		multiplier = 1_000
+		s = s[:len(s)-1]
+	} else if strings.HasSuffix(s, "M") {
+		multiplier = 1_000_000
+		s = s[:len(s)-1]
+	} else if strings.HasSuffix(s, "B") {
+		multiplier = 1_000_000_000
+		s = s[:len(s)-1]
+	}
+	var f float64
+	fmt.Sscanf(s, "%f", &f)
+	return int64(f * float64(multiplier))
+}
+
+func nullStr(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+func int64ToNullable(n int64) interface{} {
+	if n == 0 {
+		return nil
+	}
+	return n
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
