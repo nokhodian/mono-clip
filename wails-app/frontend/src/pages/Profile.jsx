@@ -126,8 +126,7 @@ function PostsSection({ personId, onOpenPost, onOpenURL }) {
       const rows = data || []
       setPosts(rows)
       if (rows.length > 0) setOpen(true)
-      setLoading(false)
-    })
+    }).catch(() => {}).finally(() => setLoading(false))
   }, [personId])
 
   return (

@@ -598,9 +598,8 @@ func saveCommentsToDB(ctx context.Context, db *sql.DB, items []workflow.Item, po
 		}
 		text, _ := data["text"].(string)
 		timestamp, _ := data["timestamp"].(string)
-		if timestamp == "" {
-			timestamp = now
-		}
+		// Leave timestamp as "" if not provided — this is the stable dedup key.
+		// Do NOT substitute current time here, as that defeats UNIQUE(post_id, author, timestamp).
 
 		likesCount := int64(0)
 		switch v := data["likes_count"].(type) {

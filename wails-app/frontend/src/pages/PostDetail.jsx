@@ -8,6 +8,9 @@ export default function PostDetail({ id, onBack, onOpenURL }) {
   const [loading, setLoading]   = useState(true)
 
   useEffect(() => {
+    setLoading(true)
+    setPost(null)
+    setComments([])
     if (!id) { setLoading(false); return }
     Promise.all([
       api.getPostDetail(id),
