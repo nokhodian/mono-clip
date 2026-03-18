@@ -364,14 +364,122 @@ func (b *TikTokBot) LikeComment(ctx context.Context, page *rod.Page, videoURL st
 	return nil
 }
 
+// openShareModal clicks the share icon on the current page to open the share modal.
+func openShareModal(page *rod.Page, videoURL string) error {
+	shareSelectors := []string{
+		"[data-e2e='share-icon']",
+		"[data-e2e='share-btn']",
+	}
+	for _, sel := range shareSelectors {
+		el, err := page.Timeout(5 * time.Second).Element(sel)
+		if err == nil && el != nil {
+			if clickErr := el.Click(proto.InputMouseButtonLeft, 1); clickErr == nil {
+				time.Sleep(2 * time.Second)
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("tiktok: share button not found on %s", videoURL)
+}
+
+// StitchVideo navigates to a TikTok video page, opens the share modal, and
+// clicks the Stitch option to open the stitch creator.
 func (b *TikTokBot) StitchVideo(ctx context.Context, page *rod.Page, videoURL string) error {
-	return fmt.Errorf("tiktok: StitchVideo not yet implemented")
+	if videoURL == "" {
+		return fmt.Errorf("tiktok: videoURL is required")
+	}
+	if err := page.Navigate(videoURL); err != nil {
+		return fmt.Errorf("tiktok: navigate to %s: %w", videoURL, err)
+	}
+	if err := page.WaitLoad(); err != nil {
+		return fmt.Errorf("tiktok: page load failed: %w", err)
+	}
+	time.Sleep(3 * time.Second)
+
+	if err := openShareModal(page, videoURL); err != nil {
+		return err
+	}
+
+	stitchSelectors := []string{
+		"[data-e2e='share-stitch']",
+		"button[class*='stitch' i]",
+	}
+	for _, sel := range stitchSelectors {
+		el, err := page.Timeout(5 * time.Second).Element(sel)
+		if err == nil && el != nil {
+			if clickErr := el.Click(proto.InputMouseButtonLeft, 1); clickErr == nil {
+				time.Sleep(2 * time.Second)
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("tiktok: stitch option not found in share modal for %s", videoURL)
 }
 
+// DuetVideo navigates to a TikTok video page, opens the share modal, and
+// clicks the Duet option to open the duet creator.
 func (b *TikTokBot) DuetVideo(ctx context.Context, page *rod.Page, videoURL string) error {
-	return fmt.Errorf("tiktok: DuetVideo not yet implemented")
+	if videoURL == "" {
+		return fmt.Errorf("tiktok: videoURL is required")
+	}
+	if err := page.Navigate(videoURL); err != nil {
+		return fmt.Errorf("tiktok: navigate to %s: %w", videoURL, err)
+	}
+	if err := page.WaitLoad(); err != nil {
+		return fmt.Errorf("tiktok: page load failed: %w", err)
+	}
+	time.Sleep(3 * time.Second)
+
+	if err := openShareModal(page, videoURL); err != nil {
+		return err
+	}
+
+	duetSelectors := []string{
+		"[data-e2e='share-duet']",
+		"button[class*='duet' i]",
+	}
+	for _, sel := range duetSelectors {
+		el, err := page.Timeout(5 * time.Second).Element(sel)
+		if err == nil && el != nil {
+			if clickErr := el.Click(proto.InputMouseButtonLeft, 1); clickErr == nil {
+				time.Sleep(2 * time.Second)
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("tiktok: duet option not found in share modal for %s", videoURL)
 }
 
+// ShareVideo navigates to a TikTok video page, opens the share modal, and
+// clicks the copy link button. Returns the video URL as the share result.
 func (b *TikTokBot) ShareVideo(ctx context.Context, page *rod.Page, videoURL string) (interface{}, error) {
-	return nil, fmt.Errorf("tiktok: ShareVideo not yet implemented")
+	if videoURL == "" {
+		return nil, fmt.Errorf("tiktok: videoURL is required")
+	}
+	if err := page.Navigate(videoURL); err != nil {
+		return nil, fmt.Errorf("tiktok: navigate to %s: %w", videoURL, err)
+	}
+	if err := page.WaitLoad(); err != nil {
+		return nil, fmt.Errorf("tiktok: page load failed: %w", err)
+	}
+	time.Sleep(3 * time.Second)
+
+	if err := openShareModal(page, videoURL); err != nil {
+		return nil, err
+	}
+
+	copyLinkSelectors := []string{
+		"[data-e2e='copy-link-icon']",
+		"[data-e2e='copy-link']",
+	}
+	for _, sel := range copyLinkSelectors {
+		el, err := page.Timeout(5 * time.Second).Element(sel)
+		if err == nil && el != nil {
+			if clickErr := el.Click(proto.InputMouseButtonLeft, 1); clickErr == nil {
+				time.Sleep(1 * time.Second)
+				return map[string]interface{}{"success": true, "url": videoURL}, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("tiktok: copy link button not found in share modal for %s", videoURL)
 }
