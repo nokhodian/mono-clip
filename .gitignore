@@ -22,5 +22,8 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Private docs
+MARKETING.md
+
 # Logs
 *.log
