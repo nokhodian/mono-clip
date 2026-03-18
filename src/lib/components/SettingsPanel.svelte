@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { settingsStore } from "$lib/stores/settings.svelte";
-  import { runAutoCleanup, installCli } from "$lib/api/tauri";
+  import { runAutoCleanup, installCli, checkAccessibility, openAccessibilitySettings } from "$lib/api/tauri";
 
   interface Props {
     open?: boolean;
@@ -10,6 +11,7 @@
 
   let cleanupResult = $state<number | null>(null);
   let cliResult = $state<{ ok: boolean; msg: string } | null>(null);
+  let accessibilityGranted = $state<boolean | null>(null);
 
   async function handleCleanup() {
     const count = await runAutoCleanup();
@@ -26,6 +28,14 @@
     }
     setTimeout(() => { cliResult = null; }, 5000);
   }
+
+  async function refreshAccessibility() {
+    accessibilityGranted = await checkAccessibility();
+  }
+
+  $effect(() => {
+    if (open) refreshAccessibility();
+  });
 </script>
 
 {#if open}
@@ -53,21 +63,105 @@
       {#if settingsStore.data}
         {@const s = settingsStore.data}
 
+        <!-- Permissions -->
+        <section class="mb-5">
+          <h3 class="text-xs font-medium text-white/40 uppercase tracking-wider mb-3">Permissions</h3>
+          <div class="rounded-xl border border-white/8 overflow-hidden">
+
+            <!-- Accessibility row -->
+            <div class="p-3 flex items-start gap-3">
+              <div class="mt-0.5 text-base leading-none">
+                {accessibilityGranted === true ? '✅' : accessibilityGranted === false ? '⚠️' : '⏳'}
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-sm font-medium text-white/80">Accessibility</span>
+                  {#if accessibilityGranted === false}
+                    <button
+                      class="text-xs px-2.5 py-1 rounded-lg bg-[#6366f1]/20 border border-[#6366f1]/30
+                             text-[#a5b4fc] hover:bg-[#6366f1]/30 transition-colors shrink-0"
+                      onclick={openAccessibilitySettings}
+                    >Open Settings →</button>
+                  {/if}
+                </div>
+                <p class="text-xs text-white/35 mt-1 leading-relaxed">
+                  {#if accessibilityGranted === true}
+                    Granted — global shortcut and paste-on-click are working.
+                  {:else if accessibilityGranted === false}
+                    Not granted. MonoClip needs this to detect your keyboard shortcut
+                    (<span class="font-mono">⌘⇧V</span>) and to auto-paste when you click a clip.<br/>
+                    Click <strong class="text-white/55">Open Settings →</strong>, then add
+                    <strong class="text-white/55">MonoClip</strong> and enable the toggle.
+                    Reopen this panel to confirm.
+                  {:else}
+                    Checking…
+                  {/if}
+                </p>
+              </div>
+            </div>
+
+            <div class="border-t border-white/6 mx-3"></div>
+
+            <!-- Launch at Login row -->
+            <div class="p-3 flex items-start gap-3">
+              <div class="mt-0.5 text-base leading-none">🔑</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-sm font-medium text-white/80">Launch at Login</span>
+                  <input
+                    type="checkbox"
+                    checked={s.launchAtLogin}
+                    onchange={(e) => settingsStore.update({ launchAtLogin: (e.target as HTMLInputElement).checked })}
+                    class="w-4 h-4 accent-[#6366f1] shrink-0"
+                  />
+                </div>
+                <p class="text-xs text-white/35 mt-1 leading-relaxed">
+                  MonoClip will start automatically when you log in.
+                  It appears under <strong class="text-white/55">Background Items</strong> in
+                  System Settings → General → Login Items — this is normal for menu bar apps.
+                </p>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- CLI Tools -->
+        <section class="mb-5">
+          <h3 class="text-xs font-medium text-white/40 uppercase tracking-wider mb-3">CLI Tools</h3>
+          <div class="rounded-xl border border-white/8 overflow-hidden">
+            <div class="p-3 flex items-start gap-3">
+              <div class="mt-0.5 text-base leading-none">🖥️</div>
+              <div class="flex-1 min-w-0">
+                <span class="text-sm font-medium text-white/80">mclip</span>
+                <p class="text-xs text-white/35 mt-1 leading-relaxed">
+                  Installs <span class="font-mono text-white/55">mclip</span> to
+                  <span class="font-mono text-white/55">~/.local/bin/</span> so you can manage
+                  your clipboard from any terminal. Also enables AI tools via
+                  <span class="font-mono text-white/55">mclip mcp</span>.
+                  Make sure <span class="font-mono text-white/55">~/.local/bin</span> is in your
+                  <span class="font-mono text-white/55">$PATH</span>.
+                </p>
+                <button
+                  class="mt-2.5 w-full py-2 rounded-lg text-sm border transition-colors
+                         {cliResult?.ok === false
+                           ? 'text-red-400 border-red-500/30 bg-red-500/5'
+                           : cliResult?.ok === true
+                             ? 'text-green-400 border-green-500/30 bg-green-500/5'
+                             : 'text-white/70 border-white/10 hover:bg-white/5'}"
+                  onclick={handleInstallCli}
+                >
+                  {cliResult ? cliResult.msg : "Install mclip CLI"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- General -->
         <section class="mb-5">
           <h3 class="text-xs font-medium text-white/40 uppercase tracking-wider mb-3">General</h3>
-
           <div class="space-y-3">
-            <label class="flex items-center justify-between">
-              <span class="text-sm text-white/75">Launch at Login</span>
-              <input
-                type="checkbox"
-                checked={s.launchAtLogin}
-                onchange={(e) => settingsStore.update({ launchAtLogin: (e.target as HTMLInputElement).checked })}
-                class="w-4 h-4 accent-[#6366f1]"
-              />
-            </label>
-
             <label class="flex items-center justify-between">
               <span class="text-sm text-white/75">Paste on Click</span>
               <input
@@ -91,31 +185,6 @@
               </select>
             </div>
           </div>
-        </section>
-
-        <!-- CLI Tools -->
-        <section class="mb-5">
-          <h3 class="text-xs font-medium text-white/40 uppercase tracking-wider mb-3">CLI Tools</h3>
-          <p class="text-xs text-white/40 mb-3">
-            Install <code class="font-mono text-white/60">mclip</code> to
-            <code class="font-mono text-white/60">~/.local/bin/</code> for terminal access.
-          </p>
-          <button
-            class="w-full py-2 rounded-lg text-sm border border-white/10 transition-colors
-                   {cliResult?.ok === false
-                     ? 'text-red-400 border-red-500/30'
-                     : cliResult?.ok === true
-                       ? 'text-green-400 border-green-500/30'
-                       : 'text-white/70 hover:bg-white/5'}"
-            onclick={handleInstallCli}
-          >
-            {cliResult ? cliResult.msg : "Install mclip CLI"}
-          </button>
-          {#if cliResult?.ok}
-            <p class="text-xs text-white/30 mt-1.5">
-              Make sure <code class="font-mono">~/.local/bin</code> is in your <code class="font-mono">$PATH</code>.
-            </p>
-          {/if}
         </section>
 
         <!-- Clipboard -->
