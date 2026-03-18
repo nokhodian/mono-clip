@@ -356,7 +356,7 @@ func (b *TikTokBot) LikeComment(ctx context.Context, page *rod.Page, videoURL st
 		return fmt.Errorf("tiktok: failed to like comment %s: %w", commentID, err)
 	}
 	if result != nil {
-		if result.Value.Str() != "true" {
+		if !result.Value.Bool() {
 			return fmt.Errorf("tiktok: comment %s not found on page %s", commentID, videoURL)
 		}
 	}
