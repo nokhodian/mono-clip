@@ -13,7 +13,7 @@ import (
 
 // ListUserVideos navigates to a TikTok profile page, scrolls to load the video
 // grid, and returns up to maxCount video entries.
-func (b *TikTokBot) ListUserVideos(ctx context.Context, page *rod.Page, profileURL string, maxCount int) (interface{}, error) {
+func (b *TikTokBot) ListUserVideos(ctx context.Context, page *rod.Page, profileURL string, maxCount int) ([]map[string]interface{}, error) {
 	if profileURL == "" {
 		return nil, fmt.Errorf("tiktok: profileURL is required")
 	}
@@ -54,9 +54,10 @@ func (b *TikTokBot) ListUserVideos(ctx context.Context, page *rod.Page, profileU
 		}`)
 		if err == nil && result != nil {
 			var parsed []map[string]interface{}
-			if jsonErr := json.Unmarshal([]byte(result.Value.Str()), &parsed); jsonErr == nil {
-				videos = parsed
+			if jsonErr := json.Unmarshal([]byte(result.Value.Str()), &parsed); jsonErr != nil {
+				return nil, fmt.Errorf("tiktok: failed to parse video list JSON: %w", jsonErr)
 			}
+			videos = parsed
 		}
 
 		if len(videos) == prevCount {
@@ -76,11 +77,7 @@ func (b *TikTokBot) ListUserVideos(ctx context.Context, page *rod.Page, profileU
 		videos = videos[:maxCount]
 	}
 
-	out := make([]interface{}, len(videos))
-	for i, v := range videos {
-		out[i] = v
-	}
-	return out, nil
+	return videos, nil
 }
 
 // FollowUser navigates to a TikTok profile page and clicks the Follow button.
