@@ -467,8 +467,8 @@ func (b *TikTokBot) GetMethodByName(name string) (func(ctx context.Context, args
 	switch name {
 	case "list_user_videos":
 		return func(ctx context.Context, args ...interface{}) (interface{}, error) {
-			if len(args) < 2 {
-				return nil, fmt.Errorf("list_user_videos requires (page, profileURL)")
+			if len(args) < 3 {
+				return nil, fmt.Errorf("list_user_videos requires (page, profileURL, maxCount)")
 			}
 			page, ok := args[0].(*rod.Page)
 			if !ok {
@@ -476,10 +476,8 @@ func (b *TikTokBot) GetMethodByName(name string) (func(ctx context.Context, args
 			}
 			profileURL, _ := args[1].(string)
 			maxCount := 20
-			if len(args) >= 3 {
-				if v, ok := args[2].(float64); ok {
-					maxCount = int(v)
-				}
+			if v, ok := args[2].(float64); ok {
+				maxCount = int(v)
 			}
 			return b.ListUserVideos(ctx, page, profileURL, maxCount)
 		}, true
@@ -519,8 +517,8 @@ func (b *TikTokBot) GetMethodByName(name string) (func(ctx context.Context, args
 
 	case "list_video_comments":
 		return func(ctx context.Context, args ...interface{}) (interface{}, error) {
-			if len(args) < 2 {
-				return nil, fmt.Errorf("list_video_comments requires (page, videoURL)")
+			if len(args) < 3 {
+				return nil, fmt.Errorf("list_video_comments requires (page, videoURL, maxCount)")
 			}
 			page, ok := args[0].(*rod.Page)
 			if !ok {
@@ -528,10 +526,8 @@ func (b *TikTokBot) GetMethodByName(name string) (func(ctx context.Context, args
 			}
 			videoURL, _ := args[1].(string)
 			maxCount := 50
-			if len(args) >= 3 {
-				if v, ok := args[2].(float64); ok {
-					maxCount = int(v)
-				}
+			if v, ok := args[2].(float64); ok {
+				maxCount = int(v)
 			}
 			return b.ListVideoComments(ctx, page, videoURL, maxCount)
 		}, true
