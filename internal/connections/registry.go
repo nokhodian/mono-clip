@@ -88,8 +88,8 @@ var Registry = map[string]PlatformDef{
 		ID:         "telegram",
 		Name:       "Telegram",
 		Category:   "social",
-		ConnectVia: "UI",
-		Methods:    []AuthMethod{MethodBrowser, MethodAPIKey},
+		ConnectVia: "API",
+		Methods:    []AuthMethod{MethodAPIKey},
 		Fields: map[AuthMethod][]CredentialField{
 			MethodAPIKey: {
 				{
@@ -382,6 +382,25 @@ var Registry = map[string]PlatformDef{
 			CallbackPort: 9876,
 		},
 		IconEmoji: "📁",
+	},
+	"openrouter": {
+		ID:         "openrouter",
+		Name:       "OpenRouter",
+		Category:   "service",
+		ConnectVia: "API",
+		Methods:    []AuthMethod{MethodAPIKey},
+		Fields: map[AuthMethod][]CredentialField{
+			MethodAPIKey: {
+				{
+					Key:      "api_key",
+					Label:    "API Key",
+					Secret:   true,
+					Required: true,
+					HelpText: "Your OpenRouter API key. Find it at openrouter.ai/keys.",
+				},
+			},
+		},
+		IconEmoji: "🤖",
 	},
 
 	// ─── Communication ─────────────────────────────────────────────────────────
