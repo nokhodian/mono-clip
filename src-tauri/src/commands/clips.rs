@@ -158,3 +158,10 @@ pub fn save_current_clipboard_to_folder(
     queries::insert_clip(&conn, &content, content_type, &preview, folder_id, None)
         .map_err(|e| e.to_string())
 }
+
+
+#[tauri::command]
+pub fn clear_all_clips(state: State<AppState>) -> Result<i64, String> {
+    let conn = state.db.lock();
+    queries::clear_all_clips(&conn).map_err(|e| e.to_string())
+}

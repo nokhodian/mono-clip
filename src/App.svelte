@@ -11,7 +11,7 @@
   import SettingsPanel from "$lib/components/SettingsPanel.svelte";
   import HelpPanel from "$lib/components/HelpPanel.svelte";
   import Toast from "$lib/components/Toast.svelte";
-  import { hideMainWindow } from "$lib/api/tauri";
+  import { hideMainWindow, deleteClip } from "$lib/api/tauri";
 
   let showSettings = $state(false);
   let showHelp = $state(false);
@@ -98,6 +98,13 @@
     if ((e.key === "f" && e.metaKey) || e.key === "/") {
       e.preventDefault();
       document.querySelector<HTMLInputElement>('[data-search]')?.focus();
+    }
+    if (e.key === "Backspace" || e.key === "Delete") {
+      const id = clipsStore.hoveredId;
+      if (id !== null && !showSettings && !showHelp) {
+        e.preventDefault();
+        deleteClip(id).then(() => clipsStore.removeItem(id)).catch(() => {});
+      }
     }
   }
 </script>

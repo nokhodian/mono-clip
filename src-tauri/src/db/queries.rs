@@ -259,8 +259,15 @@ pub fn move_clip(conn: &Connection, id: i64, folder_id: i64) -> Result<()> {
 }
 
 pub fn run_auto_cleanup(conn: &Connection, days: i64) -> Result<i64> {
-    // Keep pinned items and the 10 most recent Inbox items regardless of age
-    let result = conn.execute(
+    // 1. Hard-delete clips that are already soft-deleted (already "trashed")
+    let purged_trash = conn.execute(
+        "DELETE FROM clip_items WHERE is_deleted = 1",
+        [],
+    ).unwrap_or(0);
+
+    // 2. Hard-delete old non-pinned clips beyond the retention window,
+    //    keeping the 10 most recent Inbox items regardless of age
+    let purged_old = conn.execute(
         "DELETE FROM clip_items
          WHERE is_pinned = 0
            AND is_deleted = 0
@@ -271,8 +278,17 @@ pub fn run_auto_cleanup(conn: &Connection, days: i64) -> Result<i64> {
              ORDER BY updated_at DESC LIMIT 10
            )",
         params![format!("-{} days", days)],
+    ).unwrap_or(0);
+
+    Ok((purged_trash + purged_old) as i64)
+}
+
+pub fn clear_all_clips(conn: &Connection) -> Result<i64> {
+    let count = conn.execute(
+        "DELETE FROM clip_items WHERE is_pinned = 0",
+        [],
     )?;
-    Ok(result as i64)
+    Ok(count as i64)
 }
 
 // ─── Settings Queries ─────────────────────────────────────────────────────────

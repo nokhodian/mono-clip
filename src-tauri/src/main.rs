@@ -96,6 +96,7 @@ fn main() {
             clips::move_clip,
             clips::copy_to_clipboard,
             clips::save_current_clipboard_to_folder,
+            clips::clear_all_clips,
             // Settings
             settings::get_settings,
             settings::update_settings,
