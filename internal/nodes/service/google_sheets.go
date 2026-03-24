@@ -263,7 +263,7 @@ func sheetsValuesToItems(values []interface{}, useHeaderRow bool) []workflow.Ite
 		if !ok {
 			continue
 		}
-		data := make(map[string]interface{}, len(row))
+		data := make(map[string]interface{}, len(row)+1)
 		for j, cell := range row {
 			var key string
 			if useHeaderRow && j < len(headers) {
@@ -273,6 +273,7 @@ func sheetsValuesToItems(values []interface{}, useHeaderRow bool) []workflow.Ite
 			}
 			data[key] = cell
 		}
+		data["_row_index"] = i + 1
 		items = append(items, workflow.NewItem(data))
 	}
 	return items
