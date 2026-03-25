@@ -101,7 +101,7 @@ That's it. Homebrew handles everything — download, verify checksum, install th
 
 Grab the latest `.dmg` from the [Releases page](https://github.com/nokhodian/mono-clip/releases):
 
-1. Download `MonoClip_0.2.0_aarch64.dmg`
+1. Download `MonoClip_0.2.2_aarch64.dmg`
 2. Open the `.dmg` and drag **MonoClip.app** to `/Applications`
 3. Launch from Spotlight or `/Applications`
 
@@ -128,6 +128,35 @@ cargo tauri build         # → src-tauri/target/release/bundle/macos/MonoClip.a
 ```
 
 > 💡 The first build takes a few minutes while Rust compiles all dependencies.
+
+<br/>
+
+## 🛠️ Troubleshooting
+
+### "MonoClip is damaged and can't be opened"
+
+<img src=".github/assets/gatekeeper-error.png" width="360" alt="macOS Gatekeeper damaged app error"/>
+
+macOS shows this warning for apps that aren't signed with an Apple Developer certificate. It's a Gatekeeper quarantine flag — the app is not actually damaged. Fix it with two commands in Terminal:
+
+```bash
+find /Applications/MonoClip.app -print0 | xargs -0 xattr -c
+codesign --force --deep --sign - /Applications/MonoClip.app
+```
+
+Then open MonoClip normally from `/Applications` or Spotlight.
+
+---
+
+### `⌘⇧V` shortcut doesn't open MonoClip
+
+MonoClip needs **Accessibility** permission to detect global keypresses. Open MonoClip, go to **Settings → Permissions → Accessibility** and click **Open Settings →**, then add MonoClip and enable the toggle.
+
+---
+
+### "Launch at Login" shows under Background Items, not Open at Login
+
+This is correct — menu bar apps that run without a Dock icon appear under **Background Items** in System Settings → General → Login Items. MonoClip will still launch automatically on login.
 
 <br/>
 
