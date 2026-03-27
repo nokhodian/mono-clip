@@ -1,6 +1,8 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt;
 use monoclip_lib::{
@@ -10,6 +12,7 @@ use monoclip_lib::{
     state::AppState,
     tray::setup::setup_tray,
     clipboard::watcher,
+    updater,
 };
 
 fn main() {
@@ -43,6 +46,10 @@ fn main() {
 
             // Start clipboard watcher
             watcher::start_watcher(handle.clone());
+
+            // Start hourly update checker
+            let stop_flag = Arc::new(AtomicBool::new(false));
+            updater::start_update_checker(handle.clone(), stop_flag);
 
             // Install mclip CLI tool into ~/.local/bin/ if bundled binary is present
             utility::auto_install_cli(&handle);
@@ -109,6 +116,7 @@ fn main() {
             utility::install_cli,
             utility::check_accessibility,
             utility::open_accessibility_settings,
+            utility::do_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running MonoClip")
