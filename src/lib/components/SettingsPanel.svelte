@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { getVersion } from "@tauri-apps/api/app";
   import { settingsStore } from "$lib/stores/settings.svelte";
   import { runAutoCleanup, clearAllClips, installCli, checkAccessibility, openAccessibilitySettings } from "$lib/api/tauri";
   import { clipsStore } from "$lib/stores/clips.svelte";
@@ -14,6 +15,7 @@
   let clearConfirm = $state(false);
   let cliResult = $state<{ ok: boolean; msg: string } | null>(null);
   let accessibilityGranted = $state<boolean | null>(null);
+  let appVersion = $state("");
 
   async function handleCleanup() {
     const count = await runAutoCleanup();
@@ -46,7 +48,10 @@
   }
 
   $effect(() => {
-    if (open) refreshAccessibility();
+    if (open) {
+      refreshAccessibility();
+      getVersion().then((v) => { appVersion = v; });
+    }
   });
 </script>
 
@@ -286,6 +291,9 @@
             Format: CmdOrCtrl+Shift+V
           </p>
         </section>
+
+        <!-- Version -->
+        <p class="text-center text-xs text-white/20 mt-6">MonoClip v{appVersion}</p>
       {/if}
     </div>
   </div>

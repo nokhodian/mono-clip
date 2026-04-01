@@ -1,6 +1,6 @@
 {
   "productName": "MonoClip",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "identifier": "com.monoes.monoclip",
   "build": {
     "frontendDist": "../dist",
@@ -40,7 +40,8 @@
         "visible": false,
         "focus": true,
         "hiddenTitle": true,
-        "titleBarStyle": "Overlay"
+        "titleBarStyle": "Overlay",
+        "dragDropEnabled": false
       }
     ]
   },
