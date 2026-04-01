@@ -1,5 +1,7 @@
 export function relativeTime(dateStr: string): string {
-  const date = new Date(dateStr);
+  // SQLite stores UTC but without a 'Z' suffix — append it so JS parses correctly
+  const normalized = dateStr.endsWith("Z") ? dateStr : dateStr + "Z";
+  const date = new Date(normalized);
   const now = new Date();
   const diff = now.getTime() - date.getTime();
   const seconds = Math.floor(diff / 1000);
@@ -13,7 +15,8 @@ export function relativeTime(dateStr: string): string {
 }
 
 export function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-US", {
+  const normalized = dateStr.endsWith("Z") ? dateStr : dateStr + "Z";
+  return new Date(normalized).toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",
