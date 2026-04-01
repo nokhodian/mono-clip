@@ -3,7 +3,7 @@
   import { clipsStore } from "$lib/stores/clips.svelte";
   import FolderModal from "./FolderModal.svelte";
   import type { Folder } from "$lib/api/tauri";
-  import { deleteFolder } from "$lib/api/tauri";
+  import { deleteFolder, moveClip, clearFolderClips, exportFolderClips } from "$lib/api/tauri";
 
   interface Props {
     onSettingsClick?: () => void;
@@ -15,6 +15,7 @@
   let editingFolder = $state<Folder | null>(null);
   let showEditFolder = $state(false);
   let contextMenu = $state<{ folder: Folder; x: number; y: number } | null>(null);
+  let dragOverId = $state<number | null>(null);
 
   async function selectFolder(id: number) {
     foldersStore.setActive(id);
@@ -22,7 +23,6 @@
   }
 
   function openContextMenu(e: MouseEvent, folder: Folder) {
-    if (folder.id === 1) return; // No context menu for Inbox
     e.preventDefault();
     contextMenu = { folder, x: e.clientX, y: e.clientY };
   }
@@ -31,6 +31,7 @@
     if (!contextMenu) return;
     const { folder } = contextMenu;
     contextMenu = null;
+    if (folder.id === 1) return; // Can't delete Inbox
     try {
       await deleteFolder(folder.id);
       foldersStore.removeFolder(folder.id);
@@ -54,6 +55,74 @@
     showEditFolder = false;
     editingFolder = null;
   }
+
+  // ─── Drag & Drop ───────────────────────────────────────────────────────────
+  function handleDragOver(e: DragEvent, folderId: number) {
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = "move";
+    dragOverId = folderId;
+  }
+
+  function handleDragLeave() {
+    dragOverId = null;
+  }
+
+  async function handleDrop(e: DragEvent, folderId: number) {
+    e.preventDefault();
+    dragOverId = null;
+    const clipId = Number(e.dataTransfer?.getData("text/plain"));
+    if (!clipId) return;
+    try {
+      await moveClip(clipId, folderId);
+      // Remove from current view since it moved to another folder
+      clipsStore.removeItem(clipId);
+    } catch (err) {
+      console.error("Move failed:", err);
+    }
+  }
+
+  // ─── Export folder ─────────────────────────────────────────────────────────
+  async function handleExportFolder() {
+    if (!contextMenu) return;
+    const { folder } = contextMenu;
+    contextMenu = null;
+    try {
+      const text = await exportFolderClips(folder.id);
+      const blob = new Blob([text], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${folder.name.replace(/[^a-zA-Z0-9]/g, "_")}_clips.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Export failed:", err);
+    }
+  }
+
+  // ─── Clear folder ─────────────────────────────────────────────────────────
+  let clearConfirm = $state(false);
+
+  async function handleClearFolder() {
+    if (!contextMenu) return;
+    if (!clearConfirm) {
+      clearConfirm = true;
+      setTimeout(() => { clearConfirm = false; }, 3000);
+      return;
+    }
+    const { folder } = contextMenu;
+    contextMenu = null;
+    clearConfirm = false;
+    try {
+      await clearFolderClips(folder.id);
+      // Reload if we're viewing this folder
+      if (foldersStore.activeId === folder.id) {
+        await clipsStore.load(folder.id);
+      }
+    } catch (err) {
+      console.error("Clear failed:", err);
+    }
+  }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -65,11 +134,16 @@
       <button
         class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-sm
                transition-all duration-100 group
-               {foldersStore.activeId === folder.id
-                 ? 'bg-white/10 text-white/95'
-                 : 'text-white/55 hover:text-white/80 hover:bg-white/5'}"
+               {dragOverId === folder.id
+                 ? 'bg-accent/20 border border-accent/40 text-white/95'
+                 : foldersStore.activeId === folder.id
+                   ? 'bg-white/10 text-white/95 border border-transparent'
+                   : 'text-white/55 hover:text-white/80 hover:bg-white/5 border border-transparent'}"
         onclick={() => selectFolder(folder.id)}
         oncontextmenu={(e) => openContextMenu(e, folder)}
+        ondragover={(e) => handleDragOver(e, folder.id)}
+        ondragleave={handleDragLeave}
+        ondrop={(e) => handleDrop(e, folder.id)}
       >
         <!-- Color dot -->
         <span
@@ -115,28 +189,48 @@
 {#if contextMenu}
   <div
     class="fixed z-50 bg-[#2c2c2e]/95 backdrop-blur-xl rounded-xl shadow-2xl
-           border border-white/10 overflow-hidden py-1 w-40"
+           border border-white/10 overflow-hidden py-1 w-44"
     style="left: {contextMenu.x}px; top: {contextMenu.y}px;"
   >
+    {#if contextMenu.folder.id !== 1}
+      <button
+        class="w-full px-3 py-2 text-sm text-left text-white/80 hover:bg-white/10
+               flex items-center gap-2"
+        onclick={startEditFolder}
+      >
+        ✏️ Edit
+      </button>
+    {/if}
     <button
       class="w-full px-3 py-2 text-sm text-left text-white/80 hover:bg-white/10
              flex items-center gap-2"
-      onclick={startEditFolder}
+      onclick={handleExportFolder}
     >
-      ✏️ Edit
+      📄 Export to File
     </button>
     <button
-      class="w-full px-3 py-2 text-sm text-left text-red-400 hover:bg-red-500/10
-             flex items-center gap-2"
-      onclick={handleDeleteFolder}
+      class="w-full px-3 py-2 text-sm text-left hover:bg-red-500/10
+             flex items-center gap-2
+             {clearConfirm ? 'text-red-400 font-medium' : 'text-white/80'}"
+      onclick={handleClearFolder}
     >
-      🗑️ Delete
+      🧹 {clearConfirm ? 'Tap again to confirm' : 'Clear All Clips'}
     </button>
+    {#if contextMenu.folder.id !== 1}
+      <div class="border-t border-white/5 my-1"></div>
+      <button
+        class="w-full px-3 py-2 text-sm text-left text-red-400 hover:bg-red-500/10
+               flex items-center gap-2"
+        onclick={handleDeleteFolder}
+      >
+        🗑️ Delete Folder
+      </button>
+    {/if}
   </div>
   <!-- Dismiss backdrop -->
   <div
     class="fixed inset-0 z-40"
-    onclick={() => { contextMenu = null; }}
+    onclick={() => { contextMenu = null; clearConfirm = false; }}
   ></div>
 {/if}
 

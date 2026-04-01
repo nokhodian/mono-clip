@@ -165,3 +165,28 @@ pub fn clear_all_clips(state: State<AppState>) -> Result<i64, String> {
     let conn = state.db.lock();
     queries::clear_all_clips(&conn).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub fn clear_folder_clips(state: State<AppState>, folder_id: i64) -> Result<i64, String> {
+    let conn = state.db.lock();
+    queries::clear_folder_clips(&conn, folder_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn export_folder_clips(state: State<AppState>, folder_id: i64) -> Result<String, String> {
+    let conn = state.db.lock();
+    let clips = queries::export_folder_clips(&conn, folder_id).map_err(|e| e.to_string())?;
+    let mut out = String::new();
+    for clip in &clips {
+        if clip.is_pinned {
+            out.push_str("[pinned] ");
+        }
+        out.push_str(&format!("[{}] ", clip.content_type));
+        out.push_str(&clip.content);
+        out.push_str(&format!("\n--- {}\n\n", clip.created_at));
+    }
+    if out.is_empty() {
+        out.push_str("(no clips in this folder)\n");
+    }
+    Ok(out)
+}

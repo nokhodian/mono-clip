@@ -68,6 +68,11 @@ async function handleCopy(e: MouseEvent) {
 
   const animDelay = `${Math.min(index * 30, 300)}ms`;
 
+  function handleDragStart(e: DragEvent) {
+    e.dataTransfer?.setData("text/plain", String(clip.id));
+    e.dataTransfer!.effectAllowed = "move";
+  }
+
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -80,6 +85,8 @@ async function handleCopy(e: MouseEvent) {
            : 'bg-white/5 hover:bg-white/10 hover:border-white/10'}
          opacity-0"
   style="animation: fade-up 200ms ease-out {animDelay} forwards;"
+  draggable="true"
+  ondragstart={handleDragStart}
   onmouseenter={() => { isHovered = true; clipsStore.hoveredId = clip.id; }}
   onmouseleave={() => { isHovered = false; if (clipsStore.hoveredId === clip.id) clipsStore.hoveredId = null; }}
   onclick={handleCopy}
