@@ -1,6 +1,4 @@
 use std::{
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
@@ -11,10 +9,43 @@ use crate::clipboard::{detector, image_store};
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
 
-fn hash_str(s: &str) -> u64 {
-    let mut h = DefaultHasher::new();
-    s.hash(&mut h);
-    h.finish()
+/// Ask macOS for the current NSPasteboard changeCount via FFI.
+/// This increments every time any app writes to the clipboard — much
+/// cheaper and more reliable than reading the full clipboard content
+/// on every poll cycle.
+#[cfg(target_os = "macos")]
+fn pasteboard_change_count() -> i64 {
+    use std::ffi::c_void;
+
+    #[link(name = "AppKit", kind = "framework")]
+    extern "C" {
+        fn objc_getClass(name: *const i8) -> *mut c_void;
+        fn sel_registerName(name: *const i8) -> *mut c_void;
+        fn objc_msgSend(receiver: *mut c_void, sel: *mut c_void, ...) -> *mut c_void;
+    }
+
+    unsafe {
+        let cls_name = b"NSPasteboard\0";
+        let sel_general = b"generalPasteboard\0";
+        let sel_change_count = b"changeCount\0";
+
+        let cls = objc_getClass(cls_name.as_ptr() as *const i8);
+        let sel_gp = sel_registerName(sel_general.as_ptr() as *const i8);
+        let sel_cc = sel_registerName(sel_change_count.as_ptr() as *const i8);
+
+        let pb = objc_msgSend(cls, sel_gp);
+        let count = objc_msgSend(pb, sel_cc) as i64;
+        count
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn pasteboard_change_count() -> i64 {
+    // On non-macOS fall back to always returning a changing value
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
 }
 
 pub fn start_watcher(app: AppHandle) {
@@ -23,24 +54,40 @@ pub fn start_watcher(app: AppHandle) {
     }
 
     std::thread::spawn(move || {
-        let mut last_hash: u64 = 0;
+        let mut last_change_count: i64 = pasteboard_change_count();
+        // Keep one arboard instance to avoid repeatedly opening/closing
+        // the NSPasteboard connection which can interfere with clipboard reads.
+        let mut arboard_cb = arboard::Clipboard::new().ok();
 
         loop {
-            std::thread::sleep(Duration::from_millis(500));
+            std::thread::sleep(Duration::from_millis(250));
 
-            // --- Determine what's on the clipboard and build a (content, type, preview) ---
-            let entry = read_clipboard_entry(&app);
-            let (content, content_type, preview) = match entry {
-                Some(e) => e,
-                None => continue,
-            };
-
-            let current_hash = hash_str(&content);
-            if current_hash == last_hash {
+            // Fast path: skip if NSPasteboard hasn't changed
+            let change_count = pasteboard_change_count();
+            if change_count == last_change_count {
                 continue;
             }
-            // NOTE: last_hash is set only after successful DB save so transient
-            // errors are automatically retried on the next poll cycle.
+
+            // Clipboard changed — read it
+            let entry = read_clipboard_entry(&app, &mut arboard_cb);
+            let (content, content_type, preview) = match entry {
+                Some(e) => e,
+                None => {
+                    // Acknowledge the change even if we can't read it,
+                    // so we don't spin on it forever.
+                    last_change_count = change_count;
+                    continue;
+                }
+            };
+
+            // Filter out sentinel strings written by the folder-shortcut capture
+            if content.starts_with("__monoclip_sentinel_") {
+                last_change_count = change_count;
+                continue;
+            }
+
+            // Update the change count before the (potentially slow) DB write
+            last_change_count = change_count;
 
             // Load settings (for max_history enforcement)
             let state = app.state::<AppState>();
@@ -64,7 +111,7 @@ pub fn start_watcher(app: AppHandle) {
                         match queries::get_clip(&conn, existing_id) {
                             Ok(c) => c,
                             Err(e) => {
-                                log::warn!("Failed to fetch existing clip, will retry: {}", e);
+                                log::warn!("Failed to fetch existing clip: {}", e);
                                 continue;
                             }
                         }
@@ -73,16 +120,13 @@ pub fn start_watcher(app: AppHandle) {
                         match queries::insert_clip(&conn, &content, content_type, &preview, 1, None) {
                             Ok(c) => c,
                             Err(e) => {
-                                log::error!("Failed to save clip, will retry: {}", e);
+                                log::error!("Failed to save clip: {}", e);
                                 continue;
                             }
                         }
                     }
                 }
             };
-
-            // Mark content as processed only after successful DB save
-            last_hash = current_hash;
 
             // Enforce max history limit
             {
@@ -98,12 +142,12 @@ pub fn start_watcher(app: AppHandle) {
 }
 
 /// Try file → image → text in priority order.
-/// Files must be checked before text because macOS also puts the bare filename
-/// as plain text on the clipboard when copying files in Finder.
-fn read_clipboard_entry(app: &AppHandle) -> Option<(String, &'static str, String)> {
-    // 1. Try file list first — full paths take priority over the bare filename
-    //    that macOS puts as plain text when files are copied in Finder.
-    if let Some((content, preview)) = read_clipboard_files() {
+fn read_clipboard_entry(
+    app: &AppHandle,
+    arboard_cb: &mut Option<arboard::Clipboard>,
+) -> Option<(String, &'static str, String)> {
+    // 1. Try file list first — full paths take priority over bare filename
+    if let Some((content, preview)) = read_clipboard_files(arboard_cb) {
         let content_type = detector::detect_content_type(&content);
         return Some((content, content_type, preview));
     }
@@ -130,21 +174,16 @@ fn read_clipboard_text(app: &AppHandle) -> Option<String> {
     app.clipboard().read_text().ok()
 }
 
-/// Read an image from the clipboard, save it to disk, and return (path, preview).
 fn read_clipboard_image(app: &AppHandle) -> Option<(String, String)> {
     use tauri_plugin_clipboard_manager::ClipboardExt;
     let img = app.clipboard().read_image().ok()?;
     let w = img.width();
     let h = img.height();
-    // Skip tiny images (likely icons or artifacts)
     if w < 4 || h < 4 {
         return None;
     }
     match image_store::save_as_png(img.rgba(), w, h) {
-        Ok(path) => {
-            let preview = format!("Image ({}×{})", w, h);
-            Some((path, preview))
-        }
+        Ok(path) => Some((path, format!("Image ({}×{})", w, h))),
         Err(e) => {
             log::warn!("Failed to save clipboard image: {}", e);
             None
@@ -152,9 +191,15 @@ fn read_clipboard_image(app: &AppHandle) -> Option<(String, String)> {
     }
 }
 
-/// Read file paths from the clipboard using arboard.
-fn read_clipboard_files() -> Option<(String, String)> {
-    let mut cb = arboard::Clipboard::new().ok()?;
+/// Read file paths using a reused arboard instance to avoid repeated
+/// NSPasteboard open/close cycles that can interfere with other reads.
+fn read_clipboard_files(cb: &mut Option<arboard::Clipboard>) -> Option<(String, String)> {
+    // Reinitialise if the instance was lost
+    if cb.is_none() {
+        *cb = arboard::Clipboard::new().ok();
+    }
+    let cb = cb.as_mut()?;
+
     let paths = cb.get().file_list().ok()?;
     if paths.is_empty() {
         return None;
@@ -164,7 +209,6 @@ fn read_clipboard_files() -> Option<(String, String)> {
         .map(|p| p.to_string_lossy().into_owned())
         .collect();
     let preview = if lines.len() == 1 {
-        // Just the filename
         paths[0]
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
