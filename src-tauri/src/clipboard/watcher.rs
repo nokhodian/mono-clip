@@ -1,4 +1,6 @@
 use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
@@ -9,155 +11,116 @@ use crate::clipboard::{detector, image_store};
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
 
-/// Ask macOS for the current NSPasteboard changeCount via FFI.
-/// This increments every time any app writes to the clipboard — much
-/// cheaper and more reliable than reading the full clipboard content
-/// on every poll cycle.
-#[cfg(target_os = "macos")]
-fn pasteboard_change_count() -> i64 {
-    use std::ffi::c_void;
-
-    #[link(name = "AppKit", kind = "framework")]
-    extern "C" {
-        fn objc_getClass(name: *const i8) -> *mut c_void;
-        fn sel_registerName(name: *const i8) -> *mut c_void;
-        fn objc_msgSend(receiver: *mut c_void, sel: *mut c_void, ...) -> *mut c_void;
-    }
-
-    unsafe {
-        let cls_name = b"NSPasteboard\0";
-        let sel_general = b"generalPasteboard\0";
-        let sel_change_count = b"changeCount\0";
-
-        let cls = objc_getClass(cls_name.as_ptr() as *const i8);
-        let sel_gp = sel_registerName(sel_general.as_ptr() as *const i8);
-        let sel_cc = sel_registerName(sel_change_count.as_ptr() as *const i8);
-
-        let pb = objc_msgSend(cls, sel_gp);
-        let count = objc_msgSend(pb, sel_cc) as i64;
-        count
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn pasteboard_change_count() -> i64 {
-    // On non-macOS fall back to always returning a changing value
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as i64
+fn hash_str(s: &str) -> u64 {
+    let mut h = DefaultHasher::new();
+    s.hash(&mut h);
+    h.finish()
 }
 
 pub fn start_watcher(app: AppHandle) {
     if RUNNING.swap(true, Ordering::SeqCst) {
-        return; // already running
+        return;
     }
 
     std::thread::spawn(move || {
-        let mut last_change_count: i64 = pasteboard_change_count();
-        // Keep one arboard instance to avoid repeatedly opening/closing
-        // the NSPasteboard connection which can interfere with clipboard reads.
-        let mut arboard_cb = arboard::Clipboard::new().ok();
-
+        // Outer loop: restart the watcher if a panic occurs inside
         loop {
-            std::thread::sleep(Duration::from_millis(250));
-
-            // Fast path: skip if NSPasteboard hasn't changed
-            let change_count = pasteboard_change_count();
-            if change_count == last_change_count {
-                continue;
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                run_watcher_loop(&app);
+            }));
+            if let Err(e) = result {
+                log::error!("Clipboard watcher panicked: {:?} — restarting in 1s", e);
+                std::thread::sleep(Duration::from_secs(1));
             }
-
-            // Clipboard changed — read it
-            let entry = read_clipboard_entry(&app, &mut arboard_cb);
-            let (content, content_type, preview) = match entry {
-                Some(e) => e,
-                None => {
-                    // Acknowledge the change even if we can't read it,
-                    // so we don't spin on it forever.
-                    last_change_count = change_count;
-                    continue;
-                }
-            };
-
-            // Filter out sentinel strings written by the folder-shortcut capture
-            if content.starts_with("__monoclip_sentinel_") {
-                last_change_count = change_count;
-                continue;
-            }
-
-            // Update the change count before the (potentially slow) DB write
-            last_change_count = change_count;
-
-            // Load settings (for max_history enforcement)
-            let state = app.state::<AppState>();
-            let settings = {
-                let conn = state.db.lock();
-                match queries::get_settings(&conn) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        log::warn!("Failed to read settings, will retry: {}", e);
-                        continue;
-                    }
-                }
-            };
-
-            // Save to Inbox with deduplication
-            let clip = {
-                let conn = state.db.lock();
-                match queries::find_duplicate_in_folder(&conn, &content, 1) {
-                    Ok(Some(existing_id)) => {
-                        let _ = queries::touch_clip(&conn, existing_id);
-                        match queries::get_clip(&conn, existing_id) {
-                            Ok(c) => c,
-                            Err(e) => {
-                                log::warn!("Failed to fetch existing clip: {}", e);
-                                continue;
-                            }
-                        }
-                    }
-                    _ => {
-                        match queries::insert_clip(&conn, &content, content_type, &preview, 1, None) {
-                            Ok(c) => c,
-                            Err(e) => {
-                                log::error!("Failed to save clip: {}", e);
-                                continue;
-                            }
-                        }
-                    }
-                }
-            };
-
-            // Enforce max history limit
-            {
-                let conn = state.db.lock();
-                let _ = enforce_max_history(&conn, settings.max_history_items);
-            }
-
-            // Emit event to frontend
-            let _ = app.emit("clip:new", &clip);
-            log::debug!("New clip saved: id={}, type={}", clip.id, clip.content_type);
         }
     });
 }
 
-/// Try file → image → text in priority order.
-fn read_clipboard_entry(
-    app: &AppHandle,
-    arboard_cb: &mut Option<arboard::Clipboard>,
-) -> Option<(String, &'static str, String)> {
-    // 1. Try file list first — full paths take priority over bare filename
-    if let Some((content, preview)) = read_clipboard_files(arboard_cb) {
+fn run_watcher_loop(app: &AppHandle) {
+    let mut last_hash: u64 = 0;
+
+    loop {
+        std::thread::sleep(Duration::from_millis(300));
+
+        let entry = read_clipboard_entry(app);
+        let (content, content_type, preview) = match entry {
+            Some(e) => e,
+            None => continue,
+        };
+
+        // Skip sentinel strings written by the folder-shortcut capture
+        if content.starts_with("__monoclip_sentinel_") {
+            continue;
+        }
+
+        let current_hash = hash_str(&content);
+        if current_hash == last_hash {
+            continue;
+        }
+        last_hash = current_hash;
+
+        let state = app.state::<AppState>();
+
+        let settings = {
+            let conn = state.db.lock();
+            match queries::get_settings(&conn) {
+                Ok(s) => s,
+                Err(e) => {
+                    log::warn!("Failed to read settings: {}", e);
+                    continue;
+                }
+            }
+        };
+
+        let clip = {
+            let conn = state.db.lock();
+            match queries::find_duplicate_in_folder(&conn, &content, 1) {
+                Ok(Some(existing_id)) => {
+                    let _ = queries::touch_clip(&conn, existing_id);
+                    match queries::get_clip(&conn, existing_id) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            log::warn!("Failed to fetch existing clip: {}", e);
+                            continue;
+                        }
+                    }
+                }
+                _ => {
+                    match queries::insert_clip(&conn, &content, content_type, &preview, 1, None) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            log::error!("Failed to save clip: {}", e);
+                            continue;
+                        }
+                    }
+                }
+            }
+        };
+
+        {
+            let conn = state.db.lock();
+            let _ = enforce_max_history(&conn, settings.max_history_items);
+        }
+
+        let _ = app.emit("clip:new", &clip);
+        log::debug!("New clip saved: id={}, type={}", clip.id, clip.content_type);
+    }
+}
+
+fn read_clipboard_entry(app: &AppHandle) -> Option<(String, &'static str, String)> {
+    // 1. File list — checked in a catch_unwind so arboard panics can't kill the watcher
+    let file_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(read_clipboard_files));
+    if let Ok(Some((content, preview))) = file_result {
         let content_type = detector::detect_content_type(&content);
         return Some((content, content_type, preview));
     }
 
-    // 2. Try image
+    // 2. Image
     if let Some((path, preview)) = read_clipboard_image(app) {
         return Some((path, "image", preview));
     }
 
-    // 3. Fall back to plain text
+    // 3. Plain text
     if let Some(text) = read_clipboard_text(app) {
         if !text.is_empty() && text.len() <= 50_000 {
             let content_type = detector::detect_content_type(&text);
@@ -191,15 +154,10 @@ fn read_clipboard_image(app: &AppHandle) -> Option<(String, String)> {
     }
 }
 
-/// Read file paths using a reused arboard instance to avoid repeated
-/// NSPasteboard open/close cycles that can interfere with other reads.
-fn read_clipboard_files(cb: &mut Option<arboard::Clipboard>) -> Option<(String, String)> {
-    // Reinitialise if the instance was lost
-    if cb.is_none() {
-        *cb = arboard::Clipboard::new().ok();
-    }
-    let cb = cb.as_mut()?;
-
+// Fresh arboard instance per call — avoids stale cached state from a long-lived instance.
+// Wrapped in catch_unwind at the call site so any arboard panic is contained.
+fn read_clipboard_files() -> Option<(String, String)> {
+    let mut cb = arboard::Clipboard::new().ok()?;
     let paths = cb.get().file_list().ok()?;
     if paths.is_empty() {
         return None;
