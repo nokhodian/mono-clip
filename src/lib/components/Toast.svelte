@@ -8,12 +8,12 @@
   let toasts = $state<ToastMessage[]>([]);
   let nextId = 0;
 
-  export function show(message: string, type: ToastMessage["type"] = "success") {
+  export function show(message: string, type: ToastMessage["type"] = "success", duration = 3000) {
     const id = nextId++;
     toasts = [...toasts, { id, message, type }];
     setTimeout(() => {
       toasts = toasts.filter((t) => t.id !== id);
-    }, 2500);
+    }, duration);
   }
 </script>
 

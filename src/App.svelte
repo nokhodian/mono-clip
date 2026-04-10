@@ -67,6 +67,14 @@
       }
     });
 
+    // Listen for update progress/errors
+    await listen<string>("update:progress", ({ payload }) => {
+      (toast as unknown as { show: (msg: string, type: string, duration: number) => void })?.show(`⬆ ${payload}`, "info", 8000);
+    });
+    await listen<string>("update:error", ({ payload }) => {
+      (toast as unknown as { show: (msg: string, type: string, duration: number) => void })?.show(`Update failed: ${payload}`, "error", 6000);
+    });
+
     // Hide window when it loses focus; reload clips when it gains focus
     const { getCurrentWindow } = await import("@tauri-apps/api/window");
     const win = getCurrentWindow();

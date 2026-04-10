@@ -22,8 +22,7 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> anyhow::Result<()> {
                 }
             }
             "update" => {
-                // Trigger update (Homebrew upgrade or open releases page)
-                let _ = crate::commands::utility::do_update_inner();
+                crate::updater::apply_update(app);
             }
             "quit" => {
                 app.exit(0);

@@ -111,33 +111,11 @@ pub fn open_accessibility_settings() {
         .spawn();
 }
 
-/// Shared update logic — detects Homebrew and runs upgrade or opens browser.
-pub fn do_update_inner() -> Result<(), String> {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let path_str = exe.to_string_lossy().to_lowercase();
-    let is_homebrew = path_str.contains("caskroom") || path_str.contains("homebrew");
-
-    if is_homebrew {
-        log::info!("Updating via Homebrew");
-        std::thread::spawn(|| {
-            let _ = std::process::Command::new("brew")
-                .args(["upgrade", "--cask", "mono-clip"])
-                .spawn();
-        });
-    } else {
-        log::info!("Opening releases page for manual update");
-        let _ = std::process::Command::new("open")
-            .arg("https://github.com/nokhodian/mono-clip/releases/latest")
-            .spawn();
-    }
-    Ok(())
-}
-
-/// Trigger an update: if Homebrew installed, run `brew upgrade --cask mono-clip`;
-/// otherwise open the GitHub releases page in the default browser.
+/// Trigger a full automatic update: download, install, and relaunch.
 #[tauri::command]
-pub fn do_update(_app: AppHandle) -> Result<(), String> {
-    do_update_inner()
+pub fn do_update(app: AppHandle) -> Result<(), String> {
+    crate::updater::apply_update(&app);
+    Ok(())
 }
 
 #[tauri::command]
