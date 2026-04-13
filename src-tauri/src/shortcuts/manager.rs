@@ -18,6 +18,7 @@ use std::str::FromStr;
 /// The sentinel approach avoids false positives from Universal Clipboard (iCloud /
 /// iPhone) which can asynchronously replace clipboard contents between steps,
 /// making a simple "did the content change?" check unreliable.
+#[cfg(target_os = "macos")]
 fn capture_selected_text(app: &AppHandle) -> Option<String> {
     // 1. Save current clipboard
     let original = app.clipboard().read_text().ok().unwrap_or_default();
@@ -128,8 +129,12 @@ fn register_shortcut(app: &AppHandle, shortcut_str: &str, action: ShortcutAction
         ShortcutAction::SaveToFolder { folder_id, folder_name } => {
             app.global_shortcut().on_shortcut(shortcut, move |app, _shortcut, event| {
                 if event.state == ShortcutState::Pressed {
-                    // Prefer selected text; fall back to current clipboard
-                    let (content, source) = if let Some(sel) = capture_selected_text(app) {
+                    // Prefer selected text (macOS only); fall back to current clipboard
+                    #[cfg(target_os = "macos")]
+                    let maybe_sel = capture_selected_text(app);
+                    #[cfg(not(target_os = "macos"))]
+                    let maybe_sel: Option<String> = None;
+                    let (content, source) = if let Some(sel) = maybe_sel {
                         (sel, "selection")
                     } else {
                         match app.clipboard().read_text() {

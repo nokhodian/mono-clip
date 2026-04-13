@@ -6,7 +6,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build && cargo build --bin mclip --release --manifest-path src-tauri/Cargo.toml && cp src-tauri/target/release/mclip src-tauri/binaries/mclip-$(rustc -Vv | grep host | cut -d' ' -f2)"
+    "beforeBuildCommand": "pnpm build"
   },
   "app": {
     "withGlobalTauri": true,

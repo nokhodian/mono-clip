@@ -6,28 +6,31 @@ use crate::state::AppState;
 /// Attempt to install `mclip` into `~/.local/bin/` by symlinking the bundled binary.
 /// Safe to call on every launch — skips silently if already installed.
 pub fn auto_install_cli(app: &AppHandle) {
-    let Ok(exe) = std::env::current_exe() else { return };
-    let Some(mac_os_dir) = exe.parent() else { return };
-    let mclip_bin = mac_os_dir.join("mclip");
-    if !mclip_bin.exists() {
-        return; // not bundled yet (dev mode)
-    }
+    #[cfg(unix)]
+    {
+        let Ok(exe) = std::env::current_exe() else { return };
+        let Some(mac_os_dir) = exe.parent() else { return };
+        let mclip_bin = mac_os_dir.join("mclip");
+        if !mclip_bin.exists() {
+            return; // not bundled yet (dev mode)
+        }
 
-    let Ok(home) = std::env::var("HOME") else { return };
-    let bin_dir = std::path::PathBuf::from(&home).join(".local").join("bin");
-    if std::fs::create_dir_all(&bin_dir).is_err() {
-        return;
-    }
-    let link = bin_dir.join("mclip");
-    // Already points to the right binary — nothing to do
-    if link.read_link().ok().as_deref() == Some(&mclip_bin) {
-        return;
-    }
-    // Remove stale symlink/file then create a fresh one
-    let _ = std::fs::remove_file(&link);
-    if std::os::unix::fs::symlink(&mclip_bin, &link).is_ok() {
-        log::info!("mclip installed → {:?}", link);
-        let _ = app.emit("cli:installed", link.to_string_lossy().into_owned());
+        let Ok(home) = std::env::var("HOME") else { return };
+        let bin_dir = std::path::PathBuf::from(&home).join(".local").join("bin");
+        if std::fs::create_dir_all(&bin_dir).is_err() {
+            return;
+        }
+        let link = bin_dir.join("mclip");
+        // Already points to the right binary — nothing to do
+        if link.read_link().ok().as_deref() == Some(&mclip_bin) {
+            return;
+        }
+        // Remove stale symlink/file then create a fresh one
+        let _ = std::fs::remove_file(&link);
+        if std::os::unix::fs::symlink(&mclip_bin, &link).is_ok() {
+            log::info!("mclip installed → {:?}", link);
+            let _ = app.emit("cli:installed", link.to_string_lossy().into_owned());
+        }
     }
 }
 
@@ -66,26 +69,31 @@ pub fn hide_main_window(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn install_cli(app: AppHandle) -> Result<String, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let mac_os_dir = exe.parent().ok_or("cannot find binary directory")?;
-    let mclip_bin = mac_os_dir.join("mclip");
+    #[cfg(unix)]
+    {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let mac_os_dir = exe.parent().ok_or("cannot find binary directory")?;
+        let mclip_bin = mac_os_dir.join("mclip");
 
-    if !mclip_bin.exists() {
-        return Err(
-            "mclip binary not found. This is expected in dev mode — build a release first.".into(),
-        );
+        if !mclip_bin.exists() {
+            return Err(
+                "mclip binary not found. This is expected in dev mode — build a release first.".into(),
+            );
+        }
+
+        let home = std::env::var("HOME").map_err(|e| e.to_string())?;
+        let bin_dir = std::path::PathBuf::from(&home).join(".local").join("bin");
+        std::fs::create_dir_all(&bin_dir).map_err(|e| e.to_string())?;
+        let link = bin_dir.join("mclip");
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink(&mclip_bin, &link).map_err(|e| e.to_string())?;
+
+        let path = link.to_string_lossy().into_owned();
+        let _ = app.emit("cli:installed", &path);
+        return Ok(path);
     }
-
-    let home = std::env::var("HOME").map_err(|e| e.to_string())?;
-    let bin_dir = std::path::PathBuf::from(&home).join(".local").join("bin");
-    std::fs::create_dir_all(&bin_dir).map_err(|e| e.to_string())?;
-    let link = bin_dir.join("mclip");
-    let _ = std::fs::remove_file(&link);
-    std::os::unix::fs::symlink(&mclip_bin, &link).map_err(|e| e.to_string())?;
-
-    let path = link.to_string_lossy().into_owned();
-    let _ = app.emit("cli:installed", &path);
-    Ok(path)
+    #[cfg(not(unix))]
+    Err("CLI installation is not supported on this platform.".into())
 }
 
 /// Returns true if the Accessibility permission has been granted to this process.
@@ -106,9 +114,12 @@ pub fn check_accessibility() -> bool {
 /// Opens System Settings to the Accessibility privacy pane.
 #[tauri::command]
 pub fn open_accessibility_settings() {
-    let _ = std::process::Command::new("open")
-        .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
-        .spawn();
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+            .spawn();
+    }
 }
 
 /// Trigger a full automatic update: download, install, and relaunch.
