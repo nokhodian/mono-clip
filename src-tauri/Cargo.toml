@@ -1,6 +1,6 @@
 [package]
 name = "monoclip"
-version = "0.2.10"
+version = "0.2.11"
 description = "A blazing-fast macOS clipboard manager"
 authors = ["MonoES"]
 edition = "2021"

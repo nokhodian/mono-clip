@@ -13,8 +13,6 @@ jobs:
         include:
           - os: macos-latest
             target: aarch64-apple-darwin
-          - os: macos-13
-            target: x86_64-apple-darwin
           - os: windows-latest
             target: x86_64-pc-windows-msvc
 
@@ -46,16 +44,18 @@ jobs:
       - name: Build mclip binary (macOS / Linux)
         if: runner.os != 'Windows'
         run: |
-          cargo build --bin mclip --release --target ${{ matrix.target }} --manifest-path src-tauri/Cargo.toml
           mkdir -p src-tauri/binaries
+          touch src-tauri/binaries/mclip-${{ matrix.target }}
+          cargo build --bin mclip --release --target ${{ matrix.target }} --manifest-path src-tauri/Cargo.toml
           cp src-tauri/target/${{ matrix.target }}/release/mclip src-tauri/binaries/mclip-${{ matrix.target }}
 
       - name: Build mclip binary (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          cargo build --bin mclip --release --target ${{ matrix.target }} --manifest-path src-tauri/Cargo.toml
           New-Item -Force -ItemType Directory src-tauri/binaries | Out-Null
+          New-Item -Force -ItemType File "src-tauri/binaries/mclip-${{ matrix.target }}.exe" | Out-Null
+          cargo build --bin mclip --release --target ${{ matrix.target }} --manifest-path src-tauri/Cargo.toml
           Copy-Item "src-tauri/target/${{ matrix.target }}/release/mclip.exe" "src-tauri/binaries/mclip-${{ matrix.target }}.exe"
 
       - name: Build and publish release
